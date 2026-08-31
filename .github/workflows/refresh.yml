@@ -1,0 +1,37 @@
+name: refresh
+
+on:
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Require SEC_USER_AGENT secret
+        env:
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+        run: |
+          if [ -z "$SEC_USER_AGENT" ] || echo "$SEC_USER_AGENT" | grep -qi example.com; then
+            echo "Set repo secret SEC_USER_AGENT to a real SEC-compliant contact."
+            exit 1
+          fi
+      - name: Refresh feed
+        env:
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+        run: cargo run --release -p tail-to-ticker -- refresh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tail-to-ticker-${{ github.run_id }}
+          path: |
+            data/current/tail_to_ticker.parquet
+            data/current/tail_to_ticker.csv
+            data/current/tail_to_ticker.sqlite
+            data/snapshots/*/changelog.jsonl
+          retention-days: 14
+          if-no-files-found: error

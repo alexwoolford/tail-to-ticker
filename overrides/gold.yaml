@@ -1,0 +1,325 @@
+# Gold set for `tail-to-ticker eval`.
+# Name recall: FAA registrant_names (normalized) that should resolve to ticker.
+# Tail recall: specific N-numbers, skipped when absent from the current MASTER.
+# Unpublished tails: N-numbers that must not be published as must_not_ticker.
+#
+# These are public-company legal names / common FAA registrant strings — not a
+# claim that every firm currently holds a jet in its own name.
+
+companies:
+  - ticker: WMT
+    cik: "0000104169"
+    company_name: Walmart Inc.
+    registrant_names: [WALMART INC, WAL-MART STORES INC, WALMART AVIATION LLC]
+  - ticker: TGT
+    cik: "0000027419"
+    company_name: Target Corp
+    registrant_names: [TARGET CORP, TARGET CORPORATION]
+  - ticker: HD
+    cik: "0000354950"
+    company_name: The Home Depot, Inc.
+    registrant_names: [HOME DEPOT INC, THE HOME DEPOT INC]
+  - ticker: LOW
+    cik: "0000060667"
+    company_name: Lowe's Companies, Inc.
+    registrant_names: [LOWES COMPANIES INC, LOWE'S COMPANIES INC]
+  - ticker: COST
+    cik: "0000909832"
+    company_name: Costco Wholesale Corp
+    registrant_names: [COSTCO WHOLESALE CORP, COSTCO WHOLESALE CORPORATION]
+  - ticker: NKE
+    cik: "0000320187"
+    company_name: NIKE, Inc.
+    registrant_names: [NIKE INC]
+  - ticker: SBUX
+    cik: "0000829224"
+    company_name: Starbucks Corp
+    registrant_names: [STARBUCKS CORP, STARBUCKS CORPORATION]
+  - ticker: MCD
+    cik: "0000063908"
+    company_name: McDonald's Corp
+    registrant_names: [MCDONALDS CORP, MCDONALD'S CORPORATION]
+  - ticker: PEP
+    cik: "0000077476"
+    company_name: PepsiCo, Inc.
+    registrant_names: [PEPSICO INC]
+  - ticker: KO
+    cik: "0000021344"
+    company_name: Coca-Cola Co
+    registrant_names: [COCA COLA CO, THE COCA-COLA COMPANY]
+  - ticker: PG
+    cik: "0000080424"
+    company_name: Procter & Gamble Co
+    registrant_names: [PROCTER AND GAMBLE CO, THE PROCTER & GAMBLE COMPANY]
+  - ticker: JNJ
+    cik: "0000200406"
+    company_name: Johnson & Johnson
+    registrant_names: [JOHNSON AND JOHNSON]
+  - ticker: MMM
+    cik: "0000066740"
+    company_name: 3M Co
+    registrant_names: [3M CO, 3M COMPANY]
+  - ticker: CAT
+    cik: "0000018230"
+    company_name: Caterpillar Inc.
+    registrant_names: [CATERPILLAR INC]
+  - ticker: DE
+    cik: "0000315189"
+    company_name: Deere & Co
+    registrant_names: [DEERE AND CO, DEERE & COMPANY]
+  - ticker: HON
+    cik: "0000773840"
+    company_name: Honeywell International Inc.
+    registrant_names: [HONEYWELL INTERNATIONAL INC]
+  - ticker: GE
+    cik: "0000040545"
+    company_name: General Electric Co
+    registrant_names: [GENERAL ELECTRIC CO, GE COMPANY]
+  - ticker: UNP
+    cik: "0000100885"
+    company_name: Union Pacific Corp
+    registrant_names: [UNION PACIFIC CORP, UNION PACIFIC RAILROAD CO]
+  - ticker: NSC
+    cik: "0000702165"
+    company_name: Norfolk Southern Corp
+    registrant_names: [NORFOLK SOUTHERN CORP]
+  - ticker: CSX
+    cik: "0000277948"
+    company_name: CSX Corp
+    registrant_names: [CSX CORP, CSX TRANSPORTATION INC]
+  - ticker: XOM
+    cik: "0000034088"
+    company_name: Exxon Mobil Corp
+    registrant_names: [EXXON MOBIL CORP, EXXONMOBIL CORP]
+  - ticker: CVX
+    cik: "0000093410"
+    company_name: Chevron Corp
+    registrant_names: [CHEVRON CORP, CHEVRON U S A INC, CHEVRON USA INC]
+  - ticker: COP
+    cik: "0001163165"
+    company_name: ConocoPhillips
+    registrant_names: [CONOCOPHILLIPS]
+  - ticker: OXY
+    cik: "0000797468"
+    company_name: Occidental Petroleum Corp
+    registrant_names: [OCCIDENTAL PETROLEUM CORP]
+  - ticker: SLB
+    cik: "0000087347"
+    company_name: Schlumberger Ltd
+    registrant_names: [SCHLUMBERGER TECHNOLOGY CORP]
+  - ticker: HAL
+    cik: "0000045012"
+    company_name: Halliburton Co
+    registrant_names: [HALLIBURTON CO, HALLIBURTON ENERGY SERVICES INC]
+  - ticker: DIS
+    cik: "0001744489"
+    company_name: Walt Disney Co
+    registrant_names: [WALT DISNEY CO, THE WALT DISNEY COMPANY]
+  - ticker: CMCSA
+    cik: "0001166691"
+    company_name: Comcast Corp
+    registrant_names: [COMCAST CORP]
+  - ticker: T
+    cik: "0000732717"
+    company_name: AT&T Inc.
+    registrant_names: [AT AND T INC, AT&T INC]
+  - ticker: VZ
+    cik: "0000732712"
+    company_name: Verizon Communications Inc.
+    registrant_names: [VERIZON COMMUNICATIONS INC]
+  - ticker: IBM
+    cik: "0000051143"
+    company_name: International Business Machines Corp
+    registrant_names: [INTERNATIONAL BUSINESS MACHINES CORP, IBM CORP]
+  - ticker: INTC
+    cik: "0000050863"
+    company_name: Intel Corp
+    registrant_names: [INTEL CORP, INTEL CORPORATION]
+  - ticker: CSCO
+    cik: "0000858877"
+    company_name: Cisco Systems, Inc.
+    registrant_names: [CISCO SYSTEMS INC]
+  - ticker: ORCL
+    cik: "0001341439"
+    company_name: Oracle Corp
+    registrant_names: [ORACLE CORP, ORACLE CORPORATION]
+  - ticker: QCOM
+    cik: "0000804328"
+    company_name: QUALCOMM Inc.
+    registrant_names: [QUALCOMM INC]
+  - ticker: TXN
+    cik: "0000097476"
+    company_name: Texas Instruments Inc.
+    registrant_names: [TEXAS INSTRUMENTS INC]
+  - ticker: AMZN
+    cik: "0001018724"
+    company_name: Amazon.com, Inc.
+    registrant_names: [AMAZON COM INC, AMAZON.COM INC, AMAZON.COM SERVICES LLC]
+  - ticker: MSFT
+    cik: "0000789019"
+    company_name: Microsoft Corp
+    registrant_names: [MICROSOFT CORP, MICROSOFT CORPORATION]
+  - ticker: TSLA
+    cik: "0001318605"
+    company_name: Tesla, Inc.
+    registrant_names: [TESLA INC]
+  - ticker: F
+    cik: "0000037996"
+    company_name: Ford Motor Co
+    registrant_names: [FORD MOTOR CO, FORD MOTOR COMPANY]
+  - ticker: GM
+    cik: "0001467858"
+    company_name: General Motors Co
+    registrant_names: [GENERAL MOTORS LLC, GENERAL MOTORS CO]
+  - ticker: PCAR
+    cik: "0000075362"
+    company_name: PACCAR Inc
+    registrant_names: [PACCAR INC]
+  - ticker: CMI
+    cik: "0000026172"
+    company_name: Cummins Inc.
+    registrant_names: [CUMMINS INC]
+  - ticker: EMR
+    cik: "0000032604"
+    company_name: Emerson Electric Co
+    registrant_names: [EMERSON ELECTRIC CO]
+  - ticker: ITW
+    cik: "0000049826"
+    company_name: Illinois Tool Works Inc.
+    registrant_names: [ILLINOIS TOOL WORKS INC]
+  - ticker: SHW
+    cik: "0000089800"
+    company_name: Sherwin-Williams Co
+    registrant_names: [SHERWIN WILLIAMS CO, THE SHERWIN-WILLIAMS COMPANY]
+  - ticker: UNH
+    cik: "0000731766"
+    company_name: UnitedHealth Group Inc.
+    registrant_names: [UNITEDHEALTH GROUP INC]
+  - ticker: CVS
+    cik: "0000064803"
+    company_name: CVS Health Corp
+    registrant_names: [CVS HEALTH CORP, CVS PHARMACY INC]
+  - ticker: LMT
+    cik: "0000936468"
+    company_name: Lockheed Martin Corp
+    registrant_names: [LOCKHEED MARTIN CORP]
+  - ticker: GD
+    cik: "0000040533"
+    company_name: General Dynamics Corp
+    registrant_names: [GENERAL DYNAMICS CORP]
+  - ticker: NOC
+    cik: "0001133421"
+    company_name: Northrop Grumman Corp
+    registrant_names: [NORTHROP GRUMMAN CORP, NORTHROP GRUMMAN SYSTEMS CORP]
+  - ticker: RTX
+    cik: "0000101829"
+    company_name: RTX Corp
+    registrant_names: [RTX CORP, RAYTHEON TECHNOLOGIES CORP, RAYTHEON CO]
+
+tails:
+  - n_number: N1WM
+    ticker: WMT
+    cik: "0000104169"
+    company_name: Walmart Inc.
+    citation: "tests/fixtures/edgar_hits.jsonl"
+  - n_number: N1HD
+    ticker: HD
+    cik: "0000354950"
+    company_name: The Home Depot, Inc.
+    citation: "tests/fixtures/sec/company_tickers_exchange.json"
+  - n_number: N9WM
+    ticker: WMT
+    cik: "0000104169"
+    company_name: Walmart Inc.
+    citation: "tests/fixtures/sec/ex21.csv"
+  # At-risk true positives (short cores / vanity SPVs). Missing from published
+  # after the corroboration gate is a measured recall cost, not a silent miss.
+  - n_number: N793FB
+    ticker: CMG
+    cik: "0001058090"
+    company_name: Chipotle Mexican Grill Inc
+    citation: "audit 2026-08-31; Chipotle EX-21 N793WF Lease LLC"
+  - n_number: N1972
+    ticker: NKE
+    cik: "0000320187"
+    company_name: NIKE, Inc.
+    citation: "audit 2026-08-31; NIKE INC Hillsboro OR"
+  - n_number: N40D
+    ticker: DOW
+    cik: "0001751788"
+    company_name: Dow Inc.
+    citation: "audit 2026-08-31; WARBLER I LLC vanity SPV"
+  - n_number: N39RE
+    ticker: RUSHB
+    cik: "0001012019"
+    company_name: Rush Enterprises Inc
+    citation: "audit 2026-08-31; AIRUSH INC New Braunfels TX"
+  - n_number: N340FL
+    ticker: ARHS
+    cik: "0001875444"
+    company_name: Arhaus, Inc.
+    citation: "audit 2026-08-31; HINES HILL AVIATION LLC Boston Heights OH"
+
+# Namesake false positives from the 2026-08-31 stratified audit plus N881RC
+# from the published-table precision sample. Publishing the listed ticker is a
+# regression; review_queue or unmatched is success. `refresh` applies this list
+# as a suppress gate (forbidden ticker → review queue) and aborts if eval still
+# sees a tail false positive.
+unpublished_tails:
+  - n_number: N327ME
+    must_not_ticker: GCI
+    citation: "REACH CO LLC Hughson CA ≠ Gannett"
+  - n_number: N331AJ
+    must_not_ticker: CTA-PB
+    citation: "ACORN LEASING CO LLC Savannah GA ≠ EIDP/DuPont"
+  - n_number: N372BW
+    must_not_ticker: D
+    citation: "BIRDSEYE HOLDING LLC Phoenix ≠ Dominion Energy"
+  - n_number: N547JR
+    must_not_ticker: VFC
+    citation: "TIMBERLAND AVIATION LLC Iowa City street name ≠ VF"
+  - n_number: N595LL
+    must_not_ticker: BWSN
+    citation: "O&M HOLDINGS LLC Ruidoso NM ≠ Babcock & Wilcox"
+  - n_number: N660S
+    must_not_ticker: AIV
+    citation: "ALPINE II LLC Boulder ≠ Aimco"
+  - n_number: N679W
+    must_not_ticker: VTR
+    citation: "DANFORTH LLC Columbus OH ≠ Ventas"
+  - n_number: N717RS
+    must_not_ticker: PARAA
+    citation: "CCG VENTURES LLC Dallas ≠ Paramount"
+  - n_number: N812GB
+    must_not_ticker: TRN
+    citation: "TRINITY LOGISTICS HOLDINGS LLC FL trucking ≠ Trinity Industries"
+  - n_number: N853CR
+    must_not_ticker: HRI
+    citation: "VEHICLE HOLDINGS INC Las Cruces ≠ Herc"
+  - n_number: N929MZ
+    must_not_ticker: TFC-PR
+    citation: "M&M AVIATION LLC Noblesville IN ≠ Truist"
+  - n_number: N124GD
+    must_not_ticker: DVAX
+    citation: "DINO CORPORATION LLC Wilmington DE agent ≠ Dynavax"
+  - n_number: N300XL
+    must_not_ticker: MSTLW
+    citation: "1911 PARTNERS LLC Rockledge FL ≠ Morgan Stanley"
+  - n_number: N313WL
+    must_not_ticker: JEF
+    citation: "PEAK AVIATION LLC Royal Oak MI ≠ Jefferies"
+  - n_number: N47KH
+    must_not_ticker: CSL
+    citation: "HAWK PARTNERS HOLDINGS LLC Fort Worth ≠ Carlisle"
+  - n_number: N10M
+    must_not_ticker: AEI
+    citation: "ALSET HOLDING CO LLC Charlotte ≠ Alset Inc"
+  - n_number: N16LJ
+    must_not_ticker: LEA
+    citation: "LEAR HOLDING CORP Wilmington DE ≠ Lear Corp"
+  - n_number: N5VG
+    must_not_ticker: LEA
+    citation: "same Lear Holding Corp SPV as N16LJ"
+  - n_number: N881RC
+    must_not_ticker: COO
+    citation: "COOPER COMPANIES INC Scottsdale AZ ≠ The Cooper Companies (San Ramon)"

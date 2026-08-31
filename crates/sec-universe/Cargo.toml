@@ -1,0 +1,18 @@
+[package]
+name = "sec-universe"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "SEC ticker/CIK universe, HQ addresses, and Exhibit 21 subsidiaries"
+
+[dependencies]
+anyhow.workspace = true
+arrow.workspace = true
+csv.workspace = true
+parquet.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+zip.workspace = true

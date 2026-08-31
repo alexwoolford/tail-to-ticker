@@ -1,0 +1,6 @@
+# Manual overrides. Only add an N-number here with a public citation.
+# The resolver still requires the tail to exist in the current FAA MASTER file
+# before a mapping can be published from other methods; overrides win if present
+# and the airframe is in the corporate-aviation universe.
+
+mappings: []

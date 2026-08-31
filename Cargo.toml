@@ -1,0 +1,36 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/faa-ingest",
+    "crates/sec-universe",
+    "crates/resolve",
+    "crates/cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/alexwoolford/tail-to-ticker"
+rust-version = "1.80"
+
+[workspace.dependencies]
+anyhow = "1"
+arrow = { version = "54", default-features = false, features = ["chrono-tz"] }
+bytes = "1"
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4", features = ["derive", "env"] }
+csv = "1"
+parquet = { version = "54", default-features = false, features = ["arrow", "snap", "zstd"] }
+regex = "1"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip", "stream", "json"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+sha2 = "0.10"
+thiserror = "2"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "fs"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }

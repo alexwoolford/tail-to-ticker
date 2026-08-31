@@ -1,0 +1,35 @@
+# Listed issuers whose FAA registrant *is* the aviation business
+# (OEM, defense airframer, helicopter operator, aircraft lessor, aerial fire).
+# Not a probability. Consumers who want flight departments:
+#   SELECT * FROM mappings_current WHERE aviation_issuer = 0;
+tickers:
+  - TXT
+  - BA
+  - NOC
+  - GD
+  - LHX
+  - GRMN
+  - VTOL
+  - GE
+  - WLFC
+  - BUKS
+  - BAER
+  - RTX
+  - LMT
+  - HON
+  - HEI
+  - TDG
+  - AIR
+  - SPR
+  - ERJ
+  - HII
+  - CW
+  - ESLT
+needles:
+  - BELL TEXTRON
+  - TEXTRON AVIATION
+  - NORTHROP GRUMMAN
+  - BRISTOW
+  - WILLIS LEASE
+  - BRIDGER AIR
+  - L3HARRIS

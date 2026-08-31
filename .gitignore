@@ -1,0 +1,47 @@
+# Build
+/target
+.venv
+__pycache__/
+*.pyc
+.python-version
+
+# Private notes (never version)
+/context/
+
+# Generated feed (keep the directory placeholder)
+/data/*
+!/data/.gitkeep
+
+# Downloaded sources (keep the directory placeholder)
+/cache/*
+!/cache/.gitkeep
+
+# Evidence dumps and labeled samples (scripts stay)
+/evidence/*.jsonl
+/evidence/*.csv
+
+# Archives, except tiny CI fixtures
+**/*.zip
+!tests/fixtures/**/*.zip
+
+# Feed formats anywhere they show up
+*.sqlite
+*.parquet
+*.db
+
+# Secrets / local env
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials*.json
+secrets/
+
+# Editor / OS
+.cursor/
+.idea/
+.vscode/
+.DS_Store
+*.swp
+*~

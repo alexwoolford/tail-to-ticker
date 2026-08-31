@@ -1,0 +1,9 @@
+{
+  "fields": ["cik", "name", "ticker", "exchange"],
+  "data": [
+    [104169, "Walmart Inc.", "WMT", "NYSE"],
+    [354950, "The Home Depot, Inc.", "HD", "NYSE"],
+    [320187, "NIKE, Inc.", "NKE", "NYSE"],
+    [320193, "Apple Inc.", "AAPL", "Nasdaq"]
+  ]
+}

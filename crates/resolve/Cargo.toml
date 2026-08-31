@@ -1,0 +1,21 @@
+[package]
+name = "resolve"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Tail-to-ticker entity resolution, SCD2 store, and feed export"
+
+[dependencies]
+anyhow.workspace = true
+arrow.workspace = true
+chrono.workspace = true
+csv.workspace = true
+faa-ingest = { path = "../faa-ingest" }
+parquet.workspace = true
+rusqlite.workspace = true
+sec-universe = { path = "../sec-universe" }
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
