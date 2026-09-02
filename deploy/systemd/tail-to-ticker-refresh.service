@@ -1,0 +1,21 @@
+[Unit]
+Description=tail-to-ticker daily mapping refresh
+Documentation=file:///opt/tail-to-ticker/docs/DAILY_OPS.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=tails
+Group=tails
+Nice=10
+EnvironmentFile=-/opt/tail-to-ticker/etc/tail-to-ticker.env
+WorkingDirectory=/opt/tail-to-ticker
+ExecStart=/opt/tail-to-ticker/scripts/run-refresh.sh
+TimeoutStartSec=2h
+SyslogIdentifier=tail-to-ticker-refresh
+ReadWritePaths=/var/lib/tail-to-ticker
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true

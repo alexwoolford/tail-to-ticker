@@ -1,3 +1,5 @@
+# Optional artifact backup (parquet/csv/sqlite, 14-day retention).
+# The consumer path is the host systemd timer on ct-firehose, not these artifacts.
 name: refresh
 
 on:

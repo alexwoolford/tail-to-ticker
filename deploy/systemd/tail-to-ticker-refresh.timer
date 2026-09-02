@@ -1,0 +1,12 @@
+[Unit]
+Description=tail-to-ticker daily mapping refresh
+Documentation=file:///opt/tail-to-ticker/docs/DAILY_OPS.md
+
+[Timer]
+OnCalendar=*-*-* 07:00:00 UTC
+Persistent=true
+RandomizedDelaySec=15m
+Unit=tail-to-ticker-refresh.service
+
+[Install]
+WantedBy=timers.target
