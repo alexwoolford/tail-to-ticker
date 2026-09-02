@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use chrono::Utc;
 use clap::{Parser, Subcommand};
-use faa_ingest::{download_registry_to, parse_registry_zip};
+use faa_ingest::{download_registry_to, parse_registry_zip, FAA_DOWNLOAD_USER_AGENT};
 use resolve::{
     annotate_aviation_issuer, apply_scd2, evaluate_gold, load_aviation_issuers, load_edgar_jsonl,
     load_gold, load_overrides, lookup, open_db, published_row_floor, resolve_all, unpublished_by_n,
@@ -41,6 +41,9 @@ struct Cli {
         default_value = "tail-to-ticker/0.1 (https://github.com/alexwoolford/tail-to-ticker; contact@example.com)"
     )]
     user_agent: String,
+    /// User-Agent for `registry.faa.gov` only. Akamai 403s the SEC contact string.
+    #[arg(long, global = true, env = "FAA_USER_AGENT")]
+    faa_user_agent: Option<String>,
     #[command(subcommand)]
     command: Commands,
 }
@@ -131,6 +134,11 @@ async fn main() -> Result<()> {
                 &cli.data_dir,
                 &cli.cache_dir,
                 &cli.user_agent,
+                cli.faa_user_agent
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or(FAA_DOWNLOAD_USER_AGENT),
                 as_of,
                 faa_zip,
                 tickers_json,
@@ -242,6 +250,7 @@ async fn refresh(
     data_dir: &Path,
     cache_dir: &Path,
     user_agent: &str,
+    faa_user_agent: &str,
     as_of: Option<String>,
     faa_zip: Option<PathBuf>,
     tickers_json: Option<PathBuf>,
@@ -273,7 +282,7 @@ async fn refresh(
         std::fs::read(&zip_path)?
     } else {
         require_network_user_agent(user_agent)?;
-        let (bytes, _sha) = download_registry_to(&zip_path, user_agent, false).await?;
+        let (bytes, _sha) = download_registry_to(&zip_path, faa_user_agent, false).await?;
         bytes
     };
     let (aircraft, acftref_n) = parse_registry_zip(&faa_bytes)?;
@@ -303,9 +312,21 @@ async fn refresh(
             load_tickers(&cached)?
         } else {
             require_network_user_agent(user_agent)?;
-            let rows = download_tickers(user_agent).await?;
-            std::fs::write(&cached, serde_json::to_vec(&simple_tickers_dump(&rows))?)?;
-            rows
+            match download_tickers(user_agent).await {
+                Ok(rows) => {
+                    std::fs::write(&cached, serde_json::to_vec(&simple_tickers_dump(&rows))?)?;
+                    rows
+                }
+                Err(e) if e.is_http_forbidden() && cached.exists() => {
+                    tracing::warn!(
+                        error = %e,
+                        path = %cached.display(),
+                        "SEC ticker GET 403; using cache (this egress is blocked; IPRoyal CONNECT to sec.gov is also 403)"
+                    );
+                    load_tickers(&cached)?
+                }
+                Err(e) => return Err(e.into()),
+            }
         }
     };
     tracing::info!(companies = companies.len(), "SEC ticker universe");
@@ -380,7 +401,9 @@ async fn refresh(
         Default::default()
     };
     let unpublished = if gold.exists() {
-        unpublished_by_n(&load_gold(&gold).with_context(|| format!("gold file {}", gold.display()))?)
+        unpublished_by_n(
+            &load_gold(&gold).with_context(|| format!("gold file {}", gold.display()))?,
+        )
     } else {
         tracing::warn!(path = %gold.display(), "gold file missing; unpublished-tail gate skipped");
         Default::default()

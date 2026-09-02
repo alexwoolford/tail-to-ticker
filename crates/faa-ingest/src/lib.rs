@@ -7,7 +7,7 @@ mod download;
 mod filter;
 mod parse;
 
-pub use download::{download_registry, download_registry_to, FAA_ZIP_URL};
+pub use download::{download_registry, download_registry_to, FAA_DOWNLOAD_USER_AGENT, FAA_ZIP_URL};
 pub use filter::{corporate_reason, is_corporate_aviation};
 pub use parse::{parse_acftref, parse_master, parse_registry_zip};
 

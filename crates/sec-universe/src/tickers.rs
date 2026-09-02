@@ -4,7 +4,7 @@ use std::path::Path;
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::{pad_cik, user_agent_client, Company, Result};
+use crate::{get_success_bytes, pad_cik, user_agent_client, Company, Result};
 
 pub const TICKERS_URL: &str = "https://www.sec.gov/files/company_tickers_exchange.json";
 
@@ -18,13 +18,7 @@ struct TickersFile {
 pub async fn download_tickers(user_agent: &str) -> Result<Vec<Company>> {
     tracing::info!(url = TICKERS_URL, "downloading SEC ticker universe");
     let client = user_agent_client(user_agent)?;
-    let body = client
-        .get(TICKERS_URL)
-        .send()
-        .await?
-        .error_for_status()?
-        .bytes()
-        .await?;
+    let body = get_success_bytes(&client, TICKERS_URL).await?;
     parse_tickers_json(&body)
 }
 

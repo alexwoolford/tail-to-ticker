@@ -40,6 +40,12 @@ Config: `/opt/tail-to-ticker/etc/tail-to-ticker.env` (from [`deploy/tail-to-tick
 
 Default `refresh` **re-downloads** sources. Do not pass `--use-cache` on the timer. Fail-closed gates (MASTER ≥50k, nonempty EX-21, published-row floor, gold unpublished tails) abort before the atomic publish; `/var/lib/tail-to-ticker/current/` stays the previous good file.
 
+## FAA zip, Akamai, and proxy
+
+The FAA does not offer a per-tail API. Refresh pulls **`https://registry.faa.gov/database/ReleasableAircraft.zip`** (~60–70 MB): comma-delimited `MASTER.txt` (N-number, registrant, Mode S / `icao24`) and `ACFTREF.txt` (make/model). Nightly ~05:30 UTC.
+
+Akamai in front of that zip returns **403 `AkamaiGHost`** for the SEC contact `User-Agent` even with `Accept: */*` and `Accept-Language: en-US` (same 403 from this OCI IP and from a residential laptop). Origin (Microsoft-IIS) serves the file when `FAA_USER_AGENT` is a normal browser token — not Chrome; the binary default is Safari-like and is **not** sent to SEC. SEC fair-access still uses `SEC_USER_AGENT`. `www.sec.gov` company-tickers JSON is **403 from this OCI IP** with that contact string (200 from a residential path). The existing IPRoyal HTTP(S) proxy **CONNECT-403s `faa.gov` and `sec.gov`**, so do **not** set `HTTPS_PROXY` on the tails unit for that product (and never put it on adsb-trip-journal). Reqwest honors `HTTPS_PROXY`/`NO_PROXY` if a future proxy allows `.gov`; PUDL Exhibit 21 stays **direct S3** (`no_proxy`). On SEC 403, refresh may reuse `cache/company_tickers_exchange.json` if present; FAA stays fail-closed. HTTP errors log `Server` (e.g. AkamaiGHost). 503s from origin are retried with backoff.
+
 ## Layout
 
 ```

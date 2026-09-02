@@ -14,6 +14,9 @@ pub use tickers::{
     TICKERS_URL,
 };
 
+use std::time::Duration;
+
+use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, ACCEPT_LANGUAGE, SERVER};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, thiserror::Error)]
@@ -67,11 +70,80 @@ pub fn pad_cik(cik: &str) -> String {
     format!("{digits:0>10}")
 }
 
+const GET_ATTEMPTS: u32 = 4;
+
+fn default_headers() -> HeaderMap {
+    let mut headers = HeaderMap::new();
+    headers.insert(ACCEPT, HeaderValue::from_static("*/*"));
+    headers.insert(ACCEPT_LANGUAGE, HeaderValue::from_static("en-US,en;q=0.9"));
+    headers
+}
+
+/// HTTP client that honors `HTTPS_PROXY` / `NO_PROXY` (reqwest `system-proxy`).
+/// Used for SEC (Akamai). Do not point `HTTPS_PROXY` at a proxy that 403s
+/// CONNECT to `*.gov` (the existing IPRoyal product does).
 pub fn user_agent_client(user_agent: &str) -> Result<reqwest::Client> {
     Ok(reqwest::Client::builder()
         .user_agent(user_agent)
         .gzip(true)
+        .default_headers(default_headers())
         .build()?)
+}
+
+/// Same headers, never proxied. PUDL Exhibit 21 is S3 — keep it off residential
+/// bandwidth even when `HTTPS_PROXY` is set for FAA/SEC.
+pub fn user_agent_client_direct(user_agent: &str) -> Result<reqwest::Client> {
+    Ok(reqwest::Client::builder()
+        .user_agent(user_agent)
+        .gzip(true)
+        .default_headers(default_headers())
+        .no_proxy()
+        .build()?)
+}
+
+fn server_name(resp: &reqwest::Response) -> String {
+    resp.headers()
+        .get(SERVER)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("unknown")
+        .to_string()
+}
+
+pub(crate) async fn get_success_bytes(client: &reqwest::Client, url: &str) -> Result<bytes::Bytes> {
+    let mut delay = Duration::from_secs(2);
+    let mut last: Option<(reqwest::StatusCode, String)> = None;
+    for attempt in 1..=GET_ATTEMPTS {
+        let resp = client.get(url).send().await?;
+        let status = resp.status();
+        let server = server_name(&resp);
+        if status.as_u16() == 503 && attempt < GET_ATTEMPTS {
+            tracing::warn!(attempt, %status, server = %server, url, "origin 503; retrying");
+            tokio::time::sleep(delay).await;
+            delay *= 2;
+            last = Some((status, server));
+            continue;
+        }
+        if !status.is_success() {
+            return Err(Error::Msg(format!(
+                "HTTP {status} for {url} (Server: {server})"
+            )));
+        }
+        return Ok(resp.bytes().await?);
+    }
+    let (status, server) = last.expect("503 retry always records status");
+    Err(Error::Msg(format!(
+        "HTTP {status} for {url} (Server: {server}) after {GET_ATTEMPTS} attempts"
+    )))
+}
+
+impl Error {
+    pub fn is_http_forbidden(&self) -> bool {
+        match self {
+            Error::Http(e) => e.status().map(|s| s.as_u16()) == Some(403),
+            Error::Msg(s) => s.contains("HTTP 403"),
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -81,4 +153,20 @@ pub struct AddressRecord {
     pub city: String,
     pub state: String,
     pub former_names: Vec<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn forbidden_detects_status_in_msg() {
+        let err = Error::Msg(
+            "HTTP 403 Forbidden for https://www.sec.gov/files/company_tickers_exchange.json (Server: AkamaiGHost)"
+                .into(),
+        );
+        assert!(err.is_http_forbidden());
+        let err = Error::Msg("HTTP 503 for url (Server: AkamaiGHost)".into());
+        assert!(!err.is_http_forbidden());
+    }
 }

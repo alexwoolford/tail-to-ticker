@@ -5,7 +5,7 @@ use arrow::array::{Array, DictionaryArray, Int32Array, Int64Array, LargeStringAr
 use arrow::datatypes::{Int32Type, Int64Type};
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 
-use crate::{pad_cik, user_agent_client, Result, Subsidiary};
+use crate::{get_success_bytes, pad_cik, user_agent_client_direct, Result, Subsidiary};
 
 /// Nightly PUDL parquet of parent/subsidiary rows (CC-BY-4.0).
 pub const EX21_URLS: &[&str] = &[
@@ -15,21 +15,17 @@ pub const EX21_URLS: &[&str] = &[
 ];
 
 pub async fn download_ex21_parquet(user_agent: &str, dest: &Path) -> Result<()> {
-    let client = user_agent_client(user_agent)?;
+    let client = user_agent_client_direct(user_agent)?;
     let mut last_err = None;
     for url in EX21_URLS {
         tracing::info!(url, "trying PUDL Exhibit 21 parquet");
-        match client.get(*url).send().await {
-            Ok(resp) if resp.status().is_success() => {
-                let bytes = resp.bytes().await?;
+        match get_success_bytes(&client, url).await {
+            Ok(bytes) => {
                 if let Some(parent) = dest.parent() {
                     std::fs::create_dir_all(parent)?;
                 }
                 std::fs::write(dest, bytes)?;
                 return Ok(());
-            }
-            Ok(resp) => {
-                last_err = Some(format!("{url} -> {}", resp.status()));
             }
             Err(e) => last_err = Some(e.to_string()),
         }
