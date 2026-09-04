@@ -4,7 +4,6 @@ use faa_ingest::{canonical_n_number, is_corporate_aviation, Aircraft};
 use sec_universe::{Company, Subsidiary};
 
 use crate::classify::{classify_registrant, Class};
-use crate::fleet::annotate_fleet;
 use crate::normalize::{
     ex21_indexable, name_match_corroborated, normalize_address, normalize_name,
 };
@@ -276,7 +275,7 @@ pub fn resolve_all(
 
     published.sort_by(|a, b| a.n_number.cmp(&b.n_number));
     review_queue.sort_by(|a, b| a.n_number.cmp(&b.n_number));
-    annotate_fleet(&mut published);
+    stamp_fleet_size(&mut published);
     ResolveOutput {
         published,
         review_queue,
@@ -417,6 +416,16 @@ fn hold_or_publish(
         published.push(m);
     } else {
         review.push(m);
+    }
+}
+
+fn stamp_fleet_size(rows: &mut [Mapping]) {
+    let mut counts: HashMap<String, u32> = HashMap::new();
+    for m in rows.iter() {
+        *counts.entry(m.ticker.clone()).or_insert(0) += 1;
+    }
+    for m in rows.iter_mut() {
+        m.fleet_size = counts.get(&m.ticker).copied().unwrap_or(0);
     }
 }
 
@@ -912,5 +921,30 @@ mod tests {
         assert_eq!(out.published.len(), 1);
         assert_eq!(out.published[0].ticker, "AUB");
         assert_eq!(out.published[0].match_method, EX21_SUBSIDIARY);
+    }
+
+    #[test]
+    fn fleet_size_is_published_count() {
+        let mut rows = vec![
+            Mapping {
+                n_number: "N1".into(),
+                ticker: "WMT".into(),
+                ..Mapping::default()
+            },
+            Mapping {
+                n_number: "N2".into(),
+                ticker: "WMT".into(),
+                ..Mapping::default()
+            },
+            Mapping {
+                n_number: "N3".into(),
+                ticker: "NKE".into(),
+                ..Mapping::default()
+            },
+        ];
+        stamp_fleet_size(&mut rows);
+        assert_eq!(rows[0].fleet_size, 2);
+        assert_eq!(rows[1].fleet_size, 2);
+        assert_eq!(rows[2].fleet_size, 1);
     }
 }

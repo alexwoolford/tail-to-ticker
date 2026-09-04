@@ -17,7 +17,10 @@ pub struct AviationIssuers {
 
 impl AviationIssuers {
     fn ticker_set(&self) -> HashSet<String> {
-        self.tickers.iter().map(|t| t.trim().to_ascii_uppercase()).collect()
+        self.tickers
+            .iter()
+            .map(|t| t.trim().to_ascii_uppercase())
+            .collect()
     }
 
     pub fn matches(&self, ticker: &str, registrant: &str) -> bool {
@@ -108,7 +111,8 @@ mod tests {
 
     #[test]
     fn repo_yaml_marks_textron_not_walmart() {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../overrides/aviation_issuers.yaml");
+        let path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../overrides/aviation_issuers.yaml");
         let issuers = load_aviation_issuers(&path).unwrap();
         let mut rows = vec![
             row("TXT", "TEXTRON AVIATION INC"),

@@ -625,11 +625,11 @@ dependencies = [
  "bytes",
  "chrono",
  "csv",
+ "http-get",
  "reqwest",
  "serde",
  "sha2",
  "thiserror",
- "tokio",
  "tracing",
  "zip",
 ]
@@ -870,6 +870,16 @@ dependencies = [
  "http",
  "http-body",
  "pin-project-lite",
+]
+
+[[package]]
+name = "http-get"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "reqwest",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -1642,8 +1652,6 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
- "thiserror",
- "tracing",
 ]
 
 [[package]]
@@ -1744,12 +1752,12 @@ dependencies = [
  "arrow",
  "bytes",
  "csv",
+ "http-get",
  "parquet",
  "reqwest",
  "serde",
  "serde_json",
  "thiserror",
- "tokio",
  "tracing",
  "zip",
 ]

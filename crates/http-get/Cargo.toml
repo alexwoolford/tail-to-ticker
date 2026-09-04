@@ -1,0 +1,12 @@
+[package]
+name = "http-get"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Shared GET with Accept headers and 503 retry"
+
+[dependencies]
+bytes.workspace = true
+reqwest.workspace = true
+tokio.workspace = true
+tracing.workspace = true

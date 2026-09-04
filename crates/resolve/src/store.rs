@@ -2,7 +2,7 @@ use std::path::Path;
 
 use rusqlite::{params, Connection, OptionalExtension};
 
-use crate::{ChangelogEntry, Mapping, Unresolved};
+use crate::{require_utc_date, require_utc_instant, ChangelogEntry, Mapping, Unresolved};
 
 pub struct FeedDb {
     conn: Connection,
@@ -80,6 +80,10 @@ pub fn open_db(path: &Path) -> anyhow::Result<FeedDb> {
             detail TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_changelog_date ON changelog(as_of_date);
+        CREATE TABLE IF NOT EXISTS refresh_run (
+            as_of_date TEXT PRIMARY KEY,
+            recorded_at TEXT NOT NULL
+        );
         "#,
     )?;
     ensure_column(
@@ -225,7 +229,31 @@ pub fn apply_scd2(
     review: &[Mapping],
     unresolved: &[Unresolved],
 ) -> anyhow::Result<Vec<ChangelogEntry>> {
+    apply_scd2_at(
+        db,
+        as_of,
+        published,
+        review,
+        unresolved,
+        &crate::utc_iso(chrono::Utc::now()),
+    )
+}
+
+/// Same as [`apply_scd2`] with an explicit write instant (tests).
+pub fn apply_scd2_at(
+    db: &mut FeedDb,
+    as_of: &str,
+    published: &[Mapping],
+    review: &[Mapping],
+    unresolved: &[Unresolved],
+    recorded_at: &str,
+) -> anyhow::Result<Vec<ChangelogEntry>> {
+    require_utc_date(as_of, "as_of")?;
+    require_utc_instant(recorded_at, "recorded_at")?;
     let previous = db.current_mappings()?;
+    for m in previous.iter().chain(published.iter()).chain(review.iter()) {
+        require_utc_date(&m.as_of_date, "as_of_date")?;
+    }
     let prev_map: std::collections::HashMap<_, _> = previous
         .into_iter()
         .map(|m| (m.n_number.clone(), m))
@@ -321,6 +349,12 @@ pub fn apply_scd2(
             params![e.as_of_date, e.n_number, e.change, e.detail],
         )?;
     }
+
+    tx.execute(
+        "INSERT INTO refresh_run (as_of_date, recorded_at) VALUES (?1, ?2)
+         ON CONFLICT(as_of_date) DO UPDATE SET recorded_at = excluded.recorded_at",
+        params![as_of, recorded_at],
+    )?;
 
     tx.commit()?;
     Ok(log)
@@ -522,6 +556,80 @@ mod tests {
         );
         let got = db.current_mappings().unwrap();
         assert!(got[0].aviation_issuer);
+    }
+
+    #[test]
+    fn scd2_rejects_instant_as_of() {
+        let dir = std::env::temp_dir().join(format!("ttt-scd2-date-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut db = open_db(&dir.join("feed.sqlite")).unwrap();
+        let err = apply_scd2(
+            &mut db,
+            "2026-09-01T00:00:00Z",
+            &[map("N1WM", "WMT", "exact_legal_name", "2026-09-01")],
+            &[],
+            &[],
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("YYYY-MM-DD"));
+        assert!(db.current_mappings().unwrap().is_empty());
+        let n: i64 = db
+            .conn
+            .query_row("SELECT count(*) FROM refresh_run", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 0);
+    }
+
+    fn refresh_run(db: &FeedDb, as_of: &str) -> (String, String) {
+        db.conn
+            .query_row(
+                "SELECT as_of_date, recorded_at FROM refresh_run WHERE as_of_date = ?1",
+                [as_of],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap()
+    }
+
+    #[test]
+    fn scd2_writes_refresh_run_and_same_day_overwrites() {
+        let dir = std::env::temp_dir().join(format!("ttt-scd2-run-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut db = open_db(&dir.join("feed.sqlite")).unwrap();
+        apply_scd2_at(
+            &mut db,
+            "2026-09-01",
+            &[map("N1WM", "WMT", "exact_legal_name", "2026-09-01")],
+            &[],
+            &[],
+            "2026-09-01T21:19:58Z",
+        )
+        .unwrap();
+        let (as_of, recorded) = refresh_run(&db, "2026-09-01");
+        assert_eq!(as_of, "2026-09-01");
+        assert_eq!(recorded, "2026-09-01T21:19:58Z");
+        assert!(crate::is_utc_instant(&recorded));
+        assert!(crate::is_utc_date(
+            &db.current_mappings().unwrap()[0].as_of_date
+        ));
+
+        apply_scd2_at(
+            &mut db,
+            "2026-09-01",
+            &[map("N1WM", "WMT", "exact_legal_name", "2026-09-01")],
+            &[],
+            &[],
+            "2026-09-01T21:20:00Z",
+        )
+        .unwrap();
+        let n: i64 = db
+            .conn
+            .query_row("SELECT count(*) FROM refresh_run", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 1);
+        let (_, recorded) = refresh_run(&db, "2026-09-01");
+        assert_eq!(recorded, "2026-09-01T21:20:00Z");
     }
 
     #[test]

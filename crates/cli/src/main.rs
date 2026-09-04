@@ -5,9 +5,9 @@ use chrono::Utc;
 use clap::{Parser, Subcommand};
 use faa_ingest::{download_registry_to, parse_registry_zip, FAA_DOWNLOAD_USER_AGENT};
 use resolve::{
-    annotate_aviation_issuer, apply_scd2, evaluate_gold, load_aviation_issuers, load_edgar_jsonl,
-    load_gold, load_overrides, lookup, open_db, published_row_floor, resolve_all, unpublished_by_n,
-    write_mappings_csv, write_mappings_parquet, AviationIssuers,
+    annotate_aviation_issuer, apply_scd2, evaluate_gold, is_utc_date, load_aviation_issuers,
+    load_edgar_jsonl, load_gold, load_overrides, lookup, open_db, published_row_floor, resolve_all,
+    unpublished_by_n, write_mappings_csv, write_mappings_parquet, AviationIssuers,
 };
 use sec_universe::{
     apply_addresses, download_ex21_parquet, download_tickers, load_addresses_json, load_ex21,
@@ -186,6 +186,9 @@ async fn main() -> Result<()> {
                 db.unwrap_or_else(|| cli.data_dir.join("current").join("tail_to_ticker.sqlite"));
             let feed = open_db(&db_path)?;
             let date = as_of.unwrap_or_else(|| Utc::now().date_naive().to_string());
+            if !is_utc_date(&date) {
+                anyhow::bail!("--as-of must be UTC calendar day YYYY-MM-DD, got {date:?}");
+            }
             let rows = feed.changelog_for(&date)?;
             if rows.is_empty() {
                 println!("no changelog rows for {date}");
@@ -266,6 +269,9 @@ async fn refresh(
     publish_address_cluster: bool,
 ) -> Result<()> {
     let as_of = as_of.unwrap_or_else(|| Utc::now().date_naive().to_string());
+    if !is_utc_date(&as_of) {
+        anyhow::bail!("--as-of must be UTC calendar day YYYY-MM-DD, got {as_of:?}");
+    }
     std::fs::create_dir_all(cache_dir)?;
     std::fs::create_dir_all(data_dir.join("current"))?;
     std::fs::create_dir_all(data_dir.join("snapshots").join(&as_of))?;

@@ -2,8 +2,8 @@
 
 mod aviation;
 mod classify;
+mod dates;
 mod eval;
-mod fleet;
 mod matchers;
 mod normalize;
 mod overrides;
@@ -15,8 +15,8 @@ pub use aviation::{
 };
 
 pub use classify::{classify_registrant, Class};
+pub use dates::{is_utc_date, is_utc_instant, require_utc_date, require_utc_instant, utc_iso};
 pub use eval::{evaluate_gold, EvalReport};
-pub use fleet::annotate_fleet;
 pub use matchers::{resolve_all, ResolveOutput};
 pub use normalize::{name_match_corroborated, normalize_address, normalize_name};
 pub use overrides::{
@@ -48,7 +48,7 @@ pub struct Mapping {
     pub match_method: String,
     pub as_of_date: String,
     pub source_url: String,
-    /// Count of published rows sharing this ticker (0 until `annotate_fleet`).
+    /// Count of published rows sharing this ticker (0 until fleet annotation).
     #[serde(default)]
     pub fleet_size: u32,
     /// Registrant is the listed aviation business (OEM / operator / lessor), not a flight department.

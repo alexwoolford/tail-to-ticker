@@ -62,6 +62,8 @@ Akamai in front of that zip returns **403 `AkamaiGHost`** for the SEC contact `U
   current/tail_to_ticker.sqlite # PUBLISHED — journal reads this (mode 644)
 ```
 
+Sqlite has parent table `refresh_run(as_of_date, recorded_at)` for the write instant (`YYYY-MM-DDTHH:MM:SSZ`); mapping/history/changelog columns stay UTC calendar days.
+
 Upgrades: pull/rsync → `cargo build --release` → `sudo ./deploy/install.sh` (env preserved).
 
 ## Verify
