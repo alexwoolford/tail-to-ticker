@@ -86,68 +86,7 @@ pub fn open_db(path: &Path) -> anyhow::Result<FeedDb> {
         );
         "#,
     )?;
-    ensure_column(
-        &conn,
-        "mappings_current",
-        "fleet_size",
-        "INTEGER NOT NULL DEFAULT 0",
-    )?;
-    ensure_column(
-        &conn,
-        "mappings_history",
-        "fleet_size",
-        "INTEGER NOT NULL DEFAULT 0",
-    )?;
-    ensure_column(
-        &conn,
-        "mappings_current",
-        "aviation_issuer",
-        "INTEGER NOT NULL DEFAULT 0",
-    )?;
-    ensure_column(
-        &conn,
-        "mappings_history",
-        "aviation_issuer",
-        "INTEGER NOT NULL DEFAULT 0",
-    )?;
-    for (table, column) in [
-        ("mappings_current", "confidence"),
-        ("mappings_current", "likely_aviation_operator"),
-        ("mappings_history", "confidence"),
-        ("mappings_history", "likely_aviation_operator"),
-        ("review_queue", "confidence"),
-    ] {
-        drop_column_if_exists(&conn, table, column)?;
-    }
     Ok(FeedDb { conn })
-}
-
-fn table_has_column(conn: &Connection, table: &str, column: &str) -> anyhow::Result<bool> {
-    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
-    let names = stmt.query_map([], |row| row.get::<_, String>(1))?;
-    for n in names {
-        if n? == column {
-            return Ok(true);
-        }
-    }
-    Ok(false)
-}
-
-fn drop_column_if_exists(conn: &Connection, table: &str, column: &str) -> anyhow::Result<()> {
-    if table_has_column(conn, table, column)? {
-        conn.execute(&format!("ALTER TABLE {table} DROP COLUMN {column}"), [])?;
-    }
-    Ok(())
-}
-
-fn ensure_column(conn: &Connection, table: &str, column: &str, decl: &str) -> anyhow::Result<()> {
-    if !table_has_column(conn, table, column)? {
-        conn.execute(
-            &format!("ALTER TABLE {table} ADD COLUMN {column} {decl}"),
-            [],
-        )?;
-    }
-    Ok(())
 }
 
 impl FeedDb {
@@ -630,32 +569,5 @@ mod tests {
         assert_eq!(n, 1);
         let (_, recorded) = refresh_run(&db, "2026-09-01");
         assert_eq!(recorded, "2026-09-01T21:20:00Z");
-    }
-
-    #[test]
-    fn drops_stale_confidence_columns() {
-        let dir = std::env::temp_dir().join(format!("ttt-drop-conf-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("feed.sqlite");
-        let db = open_db(&path).unwrap();
-        db.conn
-            .execute(
-                "ALTER TABLE mappings_current ADD COLUMN confidence REAL",
-                [],
-            )
-            .unwrap();
-        db.conn
-            .execute(
-                "ALTER TABLE mappings_current ADD COLUMN likely_aviation_operator INTEGER NOT NULL DEFAULT 0",
-                [],
-            )
-            .unwrap();
-        drop(db);
-        let db = open_db(&path).unwrap();
-        assert!(!table_has_column(&db.conn, "mappings_current", "confidence").unwrap());
-        assert!(
-            !table_has_column(&db.conn, "mappings_current", "likely_aviation_operator").unwrap()
-        );
     }
 }

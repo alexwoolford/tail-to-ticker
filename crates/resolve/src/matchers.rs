@@ -17,7 +17,7 @@ pub struct ResolveOutput {
     pub review_queue: Vec<Mapping>,
     pub unresolved: Vec<Unresolved>,
     pub conflicts: Vec<Conflict>,
-    pub excluded: Vec<Unresolved>,
+    pub excluded_count: usize,
 }
 
 #[derive(Clone)]
@@ -25,7 +25,6 @@ struct NameHit {
     ticker: String,
     cik: String,
     company_name: String,
-    source: String,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -51,7 +50,6 @@ pub fn resolve_all(
             ticker: c.ticker.clone(),
             cik: c.cik.clone(),
             company_name: c.name.clone(),
-            source: String::new(),
         };
         push_unique(&mut name_index, normalize_name(&c.name), hit.clone());
         for former in &c.former_names {
@@ -72,7 +70,6 @@ pub fn resolve_all(
             ticker: parent.ticker.clone(),
             cik: parent.cik.clone(),
             company_name: parent.name.clone(),
-            source: String::new(),
         };
         let sub_key = normalize_name(&s.subsidiary_name);
         if ex21_indexable(&sub_key) {
@@ -102,7 +99,7 @@ pub fn resolve_all(
     let mut review_queue = Vec::new();
     let mut unresolved = Vec::new();
     let mut conflicts = Vec::new();
-    let mut excluded = Vec::new();
+    let mut excluded_count = 0usize;
 
     for ac in aircraft {
         if !is_corporate_aviation(ac) {
@@ -113,16 +110,8 @@ pub fn resolve_all(
                 unresolved.push(unres(ac, "trustee"));
                 continue;
             }
-            Class::Fractional | Class::FaaFractionalFlag => {
-                excluded.push(unres(ac, "fractional"));
-                continue;
-            }
-            Class::Airline => {
-                excluded.push(unres(ac, "airline"));
-                continue;
-            }
-            Class::Individual => {
-                excluded.push(unres(ac, "individual"));
+            Class::Fractional | Class::FaaFractionalFlag | Class::Airline | Class::Individual => {
+                excluded_count += 1;
                 continue;
             }
             Class::Eligible => {}
@@ -152,25 +141,22 @@ pub fn resolve_all(
 
         if let Some(hits) = edgar_by_n.get(&ac.n_number) {
             match unique_edgar(hits, &by_cik) {
-                Unique::One(hit) => {
-                    let src = if hit.source.is_empty() {
+                EdgarPick::One {
+                    ticker,
+                    cik,
+                    company_name,
+                    filing_url,
+                } => {
+                    let src = if filing_url.is_empty() {
                         faa_source
                     } else {
-                        hit.source.as_str()
+                        filing_url.as_str()
                     };
-                    let m = mapping(
-                        ac,
-                        &hit.ticker,
-                        &hit.cik,
-                        &hit.company_name,
-                        EDGAR_NNUMBER,
-                        as_of,
-                        src,
-                    );
+                    let m = mapping(ac, &ticker, &cik, &company_name, EDGAR_NNUMBER, as_of, src);
                     published.push(m);
                     continue;
                 }
-                Unique::Many(tickers) => {
+                EdgarPick::Many(tickers) => {
                     conflicts.push(Conflict {
                         n_number: ac.n_number.clone(),
                         registrant_name: ac.registrant_name.clone(),
@@ -179,7 +165,7 @@ pub fn resolve_all(
                     });
                     continue;
                 }
-                Unique::None => {}
+                EdgarPick::None => {}
             }
         }
 
@@ -281,13 +267,24 @@ pub fn resolve_all(
         review_queue,
         unresolved,
         conflicts,
-        excluded,
+        excluded_count,
     }
 }
 
 enum Unique {
     None,
     One(NameHit),
+    Many(Vec<String>),
+}
+
+enum EdgarPick {
+    None,
+    One {
+        ticker: String,
+        cik: String,
+        company_name: String,
+        filing_url: String,
+    },
     Many(Vec<String>),
 }
 
@@ -305,14 +302,7 @@ fn unique_hits(hits: Option<&Vec<NameHit>>) -> Unique {
     }
 }
 
-struct EdgarResolved {
-    ticker: String,
-    cik: String,
-    company_name: String,
-    source: String,
-}
-
-fn unique_edgar(hits: &[&EdgarHit], by_cik: &HashMap<String, &Company>) -> Unique {
+fn unique_edgar(hits: &[&EdgarHit], by_cik: &HashMap<String, &Company>) -> EdgarPick {
     let mut resolved = Vec::new();
     for h in hits {
         let cik = sec_universe::pad_cik(&h.cik);
@@ -325,25 +315,25 @@ fn unique_edgar(hits: &[&EdgarHit], by_cik: &HashMap<String, &Company>) -> Uniqu
         let Some(ticker) = ticker else {
             continue;
         };
-        resolved.push(EdgarResolved {
-            ticker: ticker.to_uppercase(),
+        resolved.push((
+            ticker.to_uppercase(),
             cik,
-            company_name: company.map(|c| c.name.clone()).unwrap_or_default(),
-            source: h.filing_url.clone(),
-        });
+            company.map(|c| c.name.clone()).unwrap_or_default(),
+            h.filing_url.clone(),
+        ));
     }
-    let mut tickers: Vec<String> = resolved.iter().map(|r| r.ticker.clone()).collect();
+    let mut tickers: Vec<String> = resolved.iter().map(|r| r.0.clone()).collect();
     tickers.sort();
     tickers.dedup();
     match tickers.len() {
-        0 => Unique::None,
-        1 => Unique::One(NameHit {
-            ticker: resolved[0].ticker.clone(),
-            cik: resolved[0].cik.clone(),
-            company_name: resolved[0].company_name.clone(),
-            source: resolved[0].source.clone(),
-        }),
-        _ => Unique::Many(tickers),
+        0 => EdgarPick::None,
+        1 => EdgarPick::One {
+            ticker: resolved[0].0.clone(),
+            cik: resolved[0].1.clone(),
+            company_name: resolved[0].2.clone(),
+            filing_url: resolved[0].3.clone(),
+        },
+        _ => EdgarPick::Many(tickers),
     }
 }
 
@@ -692,7 +682,7 @@ mod tests {
             false,
         );
         assert!(out.published.is_empty());
-        assert_eq!(out.excluded[0].reason, "airline");
+        assert_eq!(out.excluded_count, 1);
     }
 
     fn company(ticker: &str, name: &str, cik: &str) -> Company {
