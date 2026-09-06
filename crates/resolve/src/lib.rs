@@ -7,7 +7,6 @@ mod eval;
 mod matchers;
 mod normalize;
 mod overrides;
-mod parquet_out;
 mod store;
 
 pub use aviation::{
@@ -23,7 +22,6 @@ pub use overrides::{
     load_gold, load_overrides, unpublished_by_n, GoldCompany, GoldFile, OverrideEntry,
     UnpublishedTail,
 };
-pub use parquet_out::{write_mappings_csv, write_mappings_parquet};
 pub use store::{apply_scd2, lookup, open_db, FeedDb};
 
 use serde::{Deserialize, Serialize};

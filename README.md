@@ -14,9 +14,8 @@ After `tail-to-ticker refresh`:
 
 | Path | Contents |
 |---|---|
-| `data/current/tail_to_ticker.parquet` | Published mappings |
-| `data/current/tail_to_ticker.sqlite` | `mappings_current`, SCD2 `mappings_history`, changelog, unresolved trusts, review queue |
-| `data/snapshots/YYYY-MM-DD/` | Dated copy plus `changelog.jsonl` |
+| `data/current/tail_to_ticker.sqlite` | `mappings_current`, changelog, unresolved trusts, review queue, `refresh_run` |
+| `data/snapshots/YYYY-MM-DD/` | Dated sqlite copy plus `changelog.jsonl` |
 
 `context/`, `data/`, and `cache/` are local-only and gitignored (directory placeholders stay). Do not commit feeds, FAA/SEC downloads, or private notes.
 
@@ -50,8 +49,8 @@ When one CIK has many SEC tickers (common + preferreds), the feed emits the **pr
 - **Registrant, not owner.** The FAA name on the airframe is the join key. Delaware trusts, LLC SPVs, and lessors are usually not the listed issuer. Do not treat a row as “Walmart’s jet” without reading `registrant_name` and `match_method`.
 - **OEM and aviation issuers are in the table.** Textron/Bell, Boeing, Northrop, Garmin, Bristow, GE Aviation, aircraft lessors match because they *are* the registrant. Filter `aviation_issuer = 0` (and optionally `fleet_size BETWEEN 1 AND 6`) for flight departments.
 - **Low recall.** Hundreds of published rows vs hundreds of thousands of MASTER records. Coverage is the corroborated public-name slice, not a census of corporate aviation.
-- **Host feed vs GitHub artifacts.** Production for adsb-trip-journal is the host systemd timer on ct-firehose, which atomically publishes `/var/lib/tail-to-ticker/current/tail_to_ticker.sqlite`. [`.github/workflows/refresh.yml`](.github/workflows/refresh.yml) (cron 07:00 UTC + `workflow_dispatch`) is an **optional artifact backup** (parquet/csv/sqlite retained 14 days). It is not the consumer path and does not replace the host timer. Local `refresh` **re-downloads** FAA, SEC tickers, and PUDL Exhibit 21 unless you pass `--use-cache` or `--skip-download`. Set repo secret / env `SEC_USER_AGENT` to a real contact; placeholder `example.com` is rejected on network fetches.
-- **Refresh fail-closed.** Empty/truncated MASTER (production runs require ≥50k parsed rows), empty Exhibit 21 (unless `--skip-pudl` or an explicit `--ex21` fixture), published-row collapse vs the previous table (below max(50, N/2)), or gold unpublished-tail false positives abort before overwrite.
+- **Host feed vs GitHub artifacts.** Production for adsb-trip-journal is the host systemd timer on ct-firehose, which atomically publishes `/var/lib/tail-to-ticker/current/tail_to_ticker.sqlite`. [`.github/workflows/refresh.yml`](.github/workflows/refresh.yml) (cron 07:00 UTC + `workflow_dispatch`) is an **optional artifact backup** (sqlite + changelog retained 14 days). It is not the consumer path and does not replace the host timer. Local `refresh` **re-downloads** FAA, SEC tickers, and PUDL Exhibit 21 unless you pass `--use-cache` or `--skip-download`. Set repo secret / env `SEC_USER_AGENT` to a real contact; placeholder `example.com` is rejected on network fetches.
+- **Refresh fail-closed.** Empty/truncated MASTER (production runs require ≥300k parsed rows; `--skip-download` skips that floor), empty Exhibit 21 (unless `--skip-pudl` or an explicit `--ex21` fixture), published-row collapse vs the previous table (below max(50, N/2)), or gold unpublished-tail false positives abort before overwrite.
 - **Precision is a labeled sample, not a score.** After a local refresh, `evidence/export_published_precision_sample.py` and `evidence/write_published_precision_verdicts.py` write a seed-43 sample and verdicts (n=70) under `evidence/`. Those CSVs are gitignored; they are not part of the repo. SQLite does not store a `confidence` column.
 - **Not investment advice.** Code is MIT; FAA data is public domain; PUDL Exhibit 21 is CC-BY-4.0 (cite Catalyst Cooperative). Redistributing a derived feed should keep that citation.
 

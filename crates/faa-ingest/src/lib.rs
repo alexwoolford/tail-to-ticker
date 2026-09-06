@@ -29,24 +29,17 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// One joined MASTER + ACFTREF row.
+/// One joined MASTER + ACFTREF row (fields the filter, matcher, and feed use).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Aircraft {
     /// Canonical N-number with leading N, uppercase (e.g. `N123AB`).
     pub n_number: String,
     pub serial: String,
-    pub mfr_mdl_code: String,
-    pub year_mfr: String,
     pub type_registrant: String,
     pub registrant_name: String,
     pub street: String,
-    pub street2: String,
     pub city: String,
     pub state: String,
-    pub zip: String,
-    pub country: String,
-    pub last_action_date: String,
-    pub cert_issue_date: String,
     pub type_aircraft: String,
     pub type_engine: String,
     pub status_code: String,
@@ -54,7 +47,6 @@ pub struct Aircraft {
     pub icao24: String,
     pub make: String,
     pub model: String,
-    pub no_seats: String,
 }
 
 impl Aircraft {

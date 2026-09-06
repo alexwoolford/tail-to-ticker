@@ -440,18 +440,11 @@ mod tests {
         Aircraft {
             n_number: n.into(),
             serial: "1".into(),
-            mfr_mdl_code: String::new(),
-            year_mfr: String::new(),
             type_registrant: "3".into(),
             registrant_name: name.into(),
             street: "702 SW 8TH ST".into(),
-            street2: String::new(),
             city: "BENTONVILLE".into(),
             state: "AR".into(),
-            zip: String::new(),
-            country: "US".into(),
-            last_action_date: String::new(),
-            cert_issue_date: String::new(),
             type_aircraft: "5".into(),
             type_engine: "5".into(),
             status_code: "V".into(),
@@ -459,7 +452,6 @@ mod tests {
             icao24: "abcdef".into(),
             make: "GULFSTREAM AEROSPACE".into(),
             model: "GVI".into(),
-            no_seats: "19".into(),
         }
     }
 

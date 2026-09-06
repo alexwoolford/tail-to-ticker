@@ -621,9 +621,7 @@ checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 name = "faa-ingest"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "bytes",
- "chrono",
  "csv",
  "http-get",
  "reqwest",
@@ -1642,11 +1640,8 @@ name = "resolve"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "arrow",
  "chrono",
- "csv",
  "faa-ingest",
- "parquet",
  "rusqlite",
  "sec-universe",
  "serde",
@@ -1759,7 +1754,6 @@ dependencies = [
  "serde_json",
  "thiserror",
  "tracing",
- "zip",
 ]
 
 [[package]]

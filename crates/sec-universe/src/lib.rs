@@ -46,12 +46,6 @@ pub struct Company {
     pub state: String,
 }
 
-impl Company {
-    pub fn padded_cik(&self) -> String {
-        pad_cik(&self.cik)
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Subsidiary {
     pub parent_cik: String,

@@ -44,7 +44,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Download sources, resolve, and write parquet + SQLite snapshots.
+    /// Download sources, resolve, and write SQLite snapshots.
     Refresh {
         #[arg(long)]
         as_of: Option<String>,

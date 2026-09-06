@@ -185,18 +185,11 @@ mod tests {
         Aircraft {
             n_number: n.into(),
             serial: String::new(),
-            mfr_mdl_code: String::new(),
-            year_mfr: String::new(),
             type_registrant: "3".into(),
             registrant_name: name.into(),
             street: String::new(),
-            street2: String::new(),
             city: String::new(),
             state: String::new(),
-            zip: String::new(),
-            country: String::new(),
-            last_action_date: String::new(),
-            cert_issue_date: String::new(),
             type_aircraft: "5".into(),
             type_engine: "5".into(),
             status_code: "V".into(),
@@ -204,7 +197,6 @@ mod tests {
             icao24: String::new(),
             make: "GULFSTREAM".into(),
             model: "G650".into(),
-            no_seats: String::new(),
         }
     }
 

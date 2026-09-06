@@ -36,7 +36,7 @@ fn read_zip_member(archive: &mut ZipArchive<Cursor<&[u8]>>, needle: &str) -> Res
     )))
 }
 
-pub fn parse_acftref(text: &str) -> Result<HashMap<String, (String, String, String)>> {
+pub fn parse_acftref(text: &str) -> Result<HashMap<String, (String, String)>> {
     let mut rdr = faa_reader(text);
     let headers = rdr.headers()?.clone();
     let headered = looks_like_acftref_header(&headers);
@@ -49,7 +49,6 @@ pub fn parse_acftref(text: &str) -> Result<HashMap<String, (String, String, Stri
             code: Some(0),
             make: Some(1),
             model: Some(2),
-            seats: Some(8),
             ..Cols::default()
         }
     };
@@ -62,21 +61,14 @@ pub fn parse_acftref(text: &str) -> Result<HashMap<String, (String, String, Stri
         if code.is_empty() || code == "CODE" {
             continue;
         }
-        map.insert(
-            code,
-            (
-                idx.get(&rec, idx.make),
-                idx.get(&rec, idx.model),
-                idx.get(&rec, idx.seats),
-            ),
-        );
+        map.insert(code, (idx.get(&rec, idx.make), idx.get(&rec, idx.model)));
     }
     Ok(map)
 }
 
 pub fn parse_master(
     text: &str,
-    refs: &HashMap<String, (String, String, String)>,
+    refs: &HashMap<String, (String, String)>,
 ) -> Result<Vec<Aircraft>> {
     let mut rdr = faa_reader(text);
     let headers = rdr.headers()?.clone();
@@ -101,26 +93,19 @@ pub fn parse_master(
         }
         let n_number = canonical_n_number(&n_raw);
         let code = idx.get(&rec, idx.mfr_mdl).to_uppercase();
-        let (make, model, seats) = refs
+        let (make, model) = refs
             .get(&code)
             .cloned()
-            .unwrap_or_else(|| (String::new(), String::new(), String::new()));
+            .unwrap_or_else(|| (String::new(), String::new()));
         let fract = idx.get(&rec, idx.fract_owner);
         out.push(Aircraft {
             n_number,
             serial: idx.get(&rec, idx.serial),
-            mfr_mdl_code: code,
-            year_mfr: idx.get(&rec, idx.year_mfr),
             type_registrant: idx.get(&rec, idx.type_registrant),
             registrant_name: idx.get(&rec, idx.name),
             street: idx.get(&rec, idx.street),
-            street2: idx.get(&rec, idx.street2),
             city: idx.get(&rec, idx.city),
             state: idx.get(&rec, idx.state),
-            zip: idx.get(&rec, idx.zip),
-            country: idx.get(&rec, idx.country),
-            last_action_date: idx.get(&rec, idx.last_action),
-            cert_issue_date: idx.get(&rec, idx.cert_issue),
             type_aircraft: idx.get(&rec, idx.type_aircraft),
             type_engine: idx.get(&rec, idx.type_engine),
             status_code: idx.get(&rec, idx.status),
@@ -128,7 +113,6 @@ pub fn parse_master(
             icao24: canonical_icao24(&idx.get(&rec, idx.mode_s_hex)),
             make,
             model,
-            no_seats: seats,
         });
     }
     Ok(out)
@@ -170,17 +154,11 @@ struct Cols {
     n_number: Option<usize>,
     serial: Option<usize>,
     mfr_mdl: Option<usize>,
-    year_mfr: Option<usize>,
     type_registrant: Option<usize>,
     name: Option<usize>,
     street: Option<usize>,
-    street2: Option<usize>,
     city: Option<usize>,
     state: Option<usize>,
-    zip: Option<usize>,
-    country: Option<usize>,
-    last_action: Option<usize>,
-    cert_issue: Option<usize>,
     type_aircraft: Option<usize>,
     type_engine: Option<usize>,
     status: Option<usize>,
@@ -189,7 +167,6 @@ struct Cols {
     code: Option<usize>,
     make: Option<usize>,
     model: Option<usize>,
-    seats: Option<usize>,
 }
 
 impl Cols {
@@ -198,17 +175,11 @@ impl Cols {
             n_number: Some(0),
             serial: Some(1),
             mfr_mdl: Some(2),
-            year_mfr: Some(4),
             type_registrant: Some(5),
             name: Some(6),
             street: Some(7),
-            street2: Some(8),
             city: Some(9),
             state: Some(10),
-            zip: Some(11),
-            country: Some(14),
-            last_action: Some(15),
-            cert_issue: Some(16),
             type_aircraft: Some(18),
             type_engine: Some(19),
             status: Some(20),
@@ -233,17 +204,11 @@ impl Cols {
                         c.code = Some(i);
                     }
                 }
-                "YEARMFR" => c.year_mfr = Some(i),
                 "TYPEREGISTRANT" | "TYPE-REGISTRANT" => c.type_registrant = Some(i),
                 "NAME" => c.name = Some(i),
                 "STREET" => c.street = Some(i),
-                "STREET2" => c.street2 = Some(i),
                 "CITY" => c.city = Some(i),
                 "STATE" => c.state = Some(i),
-                "ZIPCODE" | "ZIP" => c.zip = Some(i),
-                "COUNTRY" => c.country = Some(i),
-                "LASTACTIONDATE" => c.last_action = Some(i),
-                "CERTISSUEDATE" => c.cert_issue = Some(i),
                 "TYPEAIRCRAFT" | "TYPE-ACFT" => c.type_aircraft = Some(i),
                 "TYPEENGINE" | "TYPE-ENG" => c.type_engine = Some(i),
                 "STATUSCODE" => c.status = Some(i),
@@ -251,7 +216,6 @@ impl Cols {
                 "MODESCODEHEX" => c.mode_s_hex = Some(i),
                 "MFR" => c.make = Some(i),
                 "MODEL" => c.model = Some(i),
-                "NO-SEATS" | "NOSEATS" => c.seats = Some(i),
                 _ => {}
             }
         }

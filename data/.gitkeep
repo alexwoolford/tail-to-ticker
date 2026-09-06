@@ -1,1 +1,1 @@
-# Data directory for snapshots. Current parquet/sqlite are gitignored.
+# Data directory for snapshots. Current sqlite is gitignored.

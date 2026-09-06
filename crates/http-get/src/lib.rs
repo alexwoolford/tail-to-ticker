@@ -1,4 +1,8 @@
 //! GET with shared Accept headers; retry origin 503 with backoff.
+//!
+//! Keep Accept, Accept-Language, gzip on the caller's client, 503×4 backoff,
+//! and `Server` in error strings in lockstep with
+//! `faa-registry-mirror/src/download.rs`. Do not extract a shared crate.
 
 use std::time::Duration;
 

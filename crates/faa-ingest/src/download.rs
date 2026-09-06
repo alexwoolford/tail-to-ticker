@@ -13,6 +13,9 @@ pub const FAA_ZIP_URL: &str = "https://registry.faa.gov/database/ReleasableAircr
 /// `Accept-Language` set). A Chrome UA is not used; this Safari-like token
 /// reaches Microsoft-IIS (206/200). Override with `FAA_USER_AGENT`. Do not send
 /// this string to `www.sec.gov`.
+///
+/// Keep this UA, gzip on the client, Accept headers, 503×4 backoff, and
+/// `Server` in errors in lockstep with `faa-registry-mirror/src/download.rs`.
 pub const FAA_DOWNLOAD_USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15";
 
 pub fn http_client(user_agent: &str) -> Result<reqwest::Client> {

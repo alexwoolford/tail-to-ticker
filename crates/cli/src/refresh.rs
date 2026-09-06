@@ -6,15 +6,14 @@ use faa_ingest::{download_registry_to, parse_registry_zip};
 use resolve::{
     annotate_aviation_issuer, apply_scd2, evaluate_gold, is_utc_date, load_aviation_issuers,
     load_edgar_jsonl, load_gold, load_overrides, open_db, published_row_floor, resolve_all,
-    unpublished_by_n, write_mappings_csv, write_mappings_parquet, AviationIssuers, EdgarHit,
-    Mapping,
+    unpublished_by_n, AviationIssuers, EdgarHit, GoldFile, Mapping,
 };
 use sec_universe::{
     apply_addresses, download_ex21_parquet, download_tickers, load_addresses_json, load_ex21,
     load_tickers, Company, Subsidiary,
 };
 
-const MIN_PRODUCTION_MASTER_ROWS: usize = 50_000;
+const MIN_PRODUCTION_MASTER_ROWS: usize = 300_000;
 
 pub struct RefreshOpts {
     pub data_dir: PathBuf,
@@ -96,6 +95,7 @@ struct Sources {
     edgar_hits: Vec<EdgarHit>,
     overrides: std::collections::HashMap<String, resolve::OverrideEntry>,
     unpublished: std::collections::HashMap<String, String>,
+    gold: Option<GoldFile>,
 }
 
 async fn load_sources(opts: &RefreshOpts, mode: SourceMode) -> Result<Sources> {
@@ -123,15 +123,7 @@ async fn load_sources(opts: &RefreshOpts, mode: SourceMode) -> Result<Sources> {
         acftref = acftref_n,
         "parsed FAA registry"
     );
-    if aircraft.is_empty() {
-        anyhow::bail!("FAA MASTER parsed 0 rows; refusing to refresh");
-    }
-    if !mode.skip_master_floor() && aircraft.len() < MIN_PRODUCTION_MASTER_ROWS {
-        anyhow::bail!(
-            "FAA MASTER parsed {} rows (min {MIN_PRODUCTION_MASTER_ROWS}); refusing to refresh",
-            aircraft.len()
-        );
-    }
+    check_master_count(aircraft.len(), mode.skip_master_floor())?;
 
     let mut companies = load_ticker_universe(opts, mode).await?;
     tracing::info!(companies = companies.len(), "SEC ticker universe");
@@ -179,14 +171,18 @@ async fn load_sources(opts: &RefreshOpts, mode: SourceMode) -> Result<Sources> {
         tracing::warn!(path = %opts.overrides.display(), "overrides file missing");
         Default::default()
     };
-    let unpublished = if opts.gold.exists() {
-        unpublished_by_n(
-            &load_gold(&opts.gold).with_context(|| format!("gold file {}", opts.gold.display()))?,
+    let gold = if opts.gold.exists() {
+        Some(
+            load_gold(&opts.gold).with_context(|| format!("gold file {}", opts.gold.display()))?,
         )
     } else {
         tracing::warn!(path = %opts.gold.display(), "gold file missing; unpublished-tail gate skipped");
-        Default::default()
+        None
     };
+    let unpublished = gold
+        .as_ref()
+        .map(unpublished_by_n)
+        .unwrap_or_default();
 
     Ok(Sources {
         aircraft,
@@ -196,6 +192,7 @@ async fn load_sources(opts: &RefreshOpts, mode: SourceMode) -> Result<Sources> {
         edgar_hits,
         overrides,
         unpublished,
+        gold,
     })
 }
 
@@ -322,15 +319,13 @@ fn resolve_and_gate(opts: &RefreshOpts, as_of: &str, sources: &Sources) -> Resul
         }
     }
 
-    if opts.gold.exists() {
-        let gold_file =
-            load_gold(&opts.gold).with_context(|| format!("gold file {}", opts.gold.display()))?;
+    if let Some(gold_file) = &sources.gold {
         let trusts = out
             .unresolved
             .iter()
             .filter(|u| u.reason == "trustee")
             .count();
-        let report = evaluate_gold(&gold_file, &out.published, &sources.aircraft, trusts);
+        let report = evaluate_gold(gold_file, &out.published, &sources.aircraft, trusts);
         print!("{report}");
         if report.tail_false_positives > 0 {
             anyhow::bail!(
@@ -350,16 +345,6 @@ fn resolve_and_gate(opts: &RefreshOpts, as_of: &str, sources: &Sources) -> Resul
 
 fn write_outputs(opts: &RefreshOpts, as_of: &str, out: Gated) -> Result<()> {
     let snap = opts.data_dir.join("snapshots").join(as_of);
-    write_mappings_parquet(&snap.join("tail_to_ticker.parquet"), &out.published)?;
-    write_mappings_csv(&snap.join("tail_to_ticker.csv"), &out.published)?;
-    write_mappings_parquet(
-        &opts.data_dir.join("current").join("tail_to_ticker.parquet"),
-        &out.published,
-    )?;
-    write_mappings_csv(
-        &opts.data_dir.join("current").join("tail_to_ticker.csv"),
-        &out.published,
-    )?;
 
     let db_path = opts.data_dir.join("current").join("tail_to_ticker.sqlite");
     let mut db = open_db(&db_path)?;
@@ -431,4 +416,29 @@ fn simple_tickers_dump(rows: &[Company]) -> serde_json::Value {
             c.exchange
         ])).collect::<Vec<_>>(),
     })
+}
+
+fn check_master_count(n: usize, skip_floor: bool) -> Result<()> {
+    if n == 0 {
+        anyhow::bail!("FAA MASTER parsed 0 rows; refusing to refresh");
+    }
+    if !skip_floor && n < MIN_PRODUCTION_MASTER_ROWS {
+        anyhow::bail!(
+            "FAA MASTER parsed {n} rows (min {MIN_PRODUCTION_MASTER_ROWS}); refusing to refresh"
+        );
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn master_floor_refuses_truncated_parse() {
+        assert!(check_master_count(0, false).is_err());
+        assert!(check_master_count(299_999, false).is_err());
+        assert!(check_master_count(MIN_PRODUCTION_MASTER_ROWS, false).is_ok());
+        assert!(check_master_count(1, true).is_ok());
+    }
 }

@@ -1,4 +1,4 @@
-# Optional artifact backup (parquet/csv/sqlite, 14-day retention).
+# Optional artifact backup (sqlite + changelog, 14-day retention).
 # The consumer path is the host systemd timer on ct-firehose, not these artifacts.
 name: refresh
 
@@ -31,8 +31,6 @@ jobs:
         with:
           name: tail-to-ticker-${{ github.run_id }}
           path: |
-            data/current/tail_to_ticker.parquet
-            data/current/tail_to_ticker.csv
             data/current/tail_to_ticker.sqlite
             data/snapshots/*/changelog.jsonl
           retention-days: 14

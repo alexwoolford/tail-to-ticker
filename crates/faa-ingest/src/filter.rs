@@ -50,7 +50,6 @@ const MFR_ALLOW: &[&str] = &[
 const AIRLINER_MODELS: &[&str] = &[
     "737", "747", "757", "767", "777", "787", "A318", "A319", "A320", "A321", "A330", "A340",
     "A350", "A380", "ERJ", "E170", "E175", "E190", "E195", "CRJ", "MD-80", "MD-90", "DC-9", "A220",
-    "E175",
 ];
 
 const CORP_AIRLINER_HINTS: &[&str] = &["BBJ", "ACJ", "BUSINESS", "VIP", "LINEAGE", "PRESTIGE"];
@@ -117,18 +116,11 @@ mod tests {
         Aircraft {
             n_number: "N1".into(),
             serial: String::new(),
-            mfr_mdl_code: String::new(),
-            year_mfr: String::new(),
             type_registrant: reg_type.into(),
             registrant_name: "X INC".into(),
             street: String::new(),
-            street2: String::new(),
             city: String::new(),
             state: String::new(),
-            zip: String::new(),
-            country: String::new(),
-            last_action_date: String::new(),
-            cert_issue_date: String::new(),
             type_aircraft: t_ac.into(),
             type_engine: t_eng.into(),
             status_code: status.into(),
@@ -136,7 +128,6 @@ mod tests {
             icao24: String::new(),
             make: make.into(),
             model: model.into(),
-            no_seats: String::new(),
         }
     }
 

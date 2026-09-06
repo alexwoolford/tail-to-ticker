@@ -44,10 +44,8 @@ pub fn load_ex21(path: &Path) -> Result<Vec<Subsidiary>> {
         .to_ascii_lowercase();
     match ext.as_str() {
         "csv" => load_ex21_csv(path),
-        "json" | "jsonl" => load_ex21_jsonl(path),
         "parquet" | "pq" => load_ex21_parquet(path),
         _ => {
-            // Try parquet then csv.
             if let Ok(v) = load_ex21_parquet(path) {
                 return Ok(v);
             }
@@ -122,83 +120,6 @@ struct Ex21Csv {
     parent_state: Option<String>,
     #[serde(default)]
     parent_company_business_state: Option<String>,
-}
-
-fn load_ex21_jsonl(path: &Path) -> Result<Vec<Subsidiary>> {
-    let text = std::fs::read_to_string(path)?;
-    let mut out = Vec::new();
-    for line in text.lines() {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
-        if line.starts_with('[') {
-            let rows: Vec<Ex21Csv> = serde_json::from_str(&text)?;
-            return Ok(rows
-                .into_iter()
-                .filter_map(|row| {
-                    let name = row.subsidiary_name.or(row.subsidiary_company_name)?;
-                    Some(Subsidiary {
-                        parent_cik: pad_cik(
-                            &row.parent_cik
-                                .or(row.parent_company_central_index_key)
-                                .unwrap_or_default(),
-                        ),
-                        parent_name: row
-                            .parent_name
-                            .or(row.parent_company_name)
-                            .unwrap_or_default(),
-                        subsidiary_name: name,
-                        parent_street: row
-                            .parent_street
-                            .or(row.parent_company_business_street_address)
-                            .unwrap_or_default(),
-                        parent_city: row
-                            .parent_city
-                            .or(row.parent_company_business_city)
-                            .unwrap_or_default(),
-                        parent_state: row
-                            .parent_state
-                            .or(row.parent_company_business_state)
-                            .unwrap_or_default(),
-                    })
-                })
-                .collect());
-        }
-        let row: Ex21Csv = serde_json::from_str(line)?;
-        let name = row
-            .subsidiary_name
-            .or(row.subsidiary_company_name)
-            .unwrap_or_default();
-        if name.is_empty() {
-            continue;
-        }
-        out.push(Subsidiary {
-            parent_cik: pad_cik(
-                &row.parent_cik
-                    .or(row.parent_company_central_index_key)
-                    .unwrap_or_default(),
-            ),
-            parent_name: row
-                .parent_name
-                .or(row.parent_company_name)
-                .unwrap_or_default(),
-            subsidiary_name: name,
-            parent_street: row
-                .parent_street
-                .or(row.parent_company_business_street_address)
-                .unwrap_or_default(),
-            parent_city: row
-                .parent_city
-                .or(row.parent_company_business_city)
-                .unwrap_or_default(),
-            parent_state: row
-                .parent_state
-                .or(row.parent_company_business_state)
-                .unwrap_or_default(),
-        });
-    }
-    Ok(out)
 }
 
 fn load_ex21_parquet(path: &Path) -> Result<Vec<Subsidiary>> {

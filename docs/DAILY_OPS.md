@@ -38,7 +38,7 @@ Units in [`deploy/systemd/`](../deploy/systemd/):
 
 Config: `/opt/tail-to-ticker/etc/tail-to-ticker.env` (from [`deploy/tail-to-ticker.env.example`](../deploy/tail-to-ticker.env.example), **chmod 600**). Install does not overwrite an existing env file. The timer is enabled only when `SEC_USER_AGENT` is set and does not contain `example.com`.
 
-Default `refresh` **re-downloads** sources. Do not pass `--use-cache` on the timer. Fail-closed gates (MASTER ≥50k, nonempty EX-21, published-row floor, gold unpublished tails) abort before the atomic publish; `/var/lib/tail-to-ticker/current/` stays the previous good file.
+Default `refresh` **re-downloads** sources. Do not pass `--use-cache` on the timer. Fail-closed gates (MASTER ≥300k, nonempty EX-21, published-row floor, gold unpublished tails) abort before the atomic publish; `/var/lib/tail-to-ticker/current/` stays the previous good file.
 
 ## FAA zip and User-Agents
 
@@ -59,13 +59,13 @@ See [`deploy/tail-to-ticker.env.example`](../deploy/tail-to-ticker.env.example).
   overrides/{mappings,gold,aviation_issuers}.yaml
   etc/tail-to-ticker.env
 /var/lib/tail-to-ticker/
-  work/current/                 # in-place SCD2 while the job runs
+  work/current/                 # in-place sqlite while the job runs
   work/snapshots/YYYY-MM-DD/
   cache/                        # FAA zip, SEC tickers, PUDL parquet
   current/tail_to_ticker.sqlite # PUBLISHED — journal reads this (mode 644)
 ```
 
-Sqlite has parent table `refresh_run(as_of_date, recorded_at)` for the write instant (`YYYY-MM-DDTHH:MM:SSZ`); mapping/history/changelog columns stay UTC calendar days.
+Sqlite has parent table `refresh_run(as_of_date, recorded_at)` for the write instant (`YYYY-MM-DDTHH:MM:SSZ`); mapping/changelog columns stay UTC calendar days.
 
 Upgrades: pull/rsync → `cargo build --release` → `sudo ./deploy/install.sh` (env preserved).
 

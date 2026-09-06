@@ -31,25 +31,6 @@ pub fn open_db(path: &Path) -> anyhow::Result<FeedDb> {
             fleet_size INTEGER NOT NULL DEFAULT 0,
             aviation_issuer INTEGER NOT NULL DEFAULT 0
         );
-        CREATE TABLE IF NOT EXISTS mappings_history (
-            n_number TEXT,
-            icao24 TEXT,
-            serial TEXT,
-            make TEXT,
-            model TEXT,
-            ticker TEXT,
-            cik TEXT,
-            company_name TEXT,
-            registrant_name TEXT,
-            match_method TEXT,
-            as_of_date TEXT,
-            source_url TEXT,
-            valid_from TEXT,
-            valid_to TEXT,
-            change_type TEXT,
-            fleet_size INTEGER NOT NULL DEFAULT 0,
-            aviation_issuer INTEGER NOT NULL DEFAULT 0
-        );
         CREATE TABLE IF NOT EXISTS unresolved_trusts (
             n_number TEXT PRIMARY KEY,
             icao24 TEXT,
@@ -160,7 +141,7 @@ pub fn lookup(db: &FeedDb, n_number: &str) -> anyhow::Result<Option<Mapping>> {
     Ok(stmt.query_row(params![n], mapping_from_row).optional()?)
 }
 
-/// SCD type 2: close changed/dropped current rows into history, insert today's current set.
+/// Upsert today's published set; changelog new/dropped/updated; rewrite review/unresolved.
 pub fn apply_scd2(
     db: &mut FeedDb,
     as_of: &str,
@@ -208,7 +189,6 @@ pub fn apply_scd2_at(
     for (n, old) in &prev_map {
         match new_map.get(n) {
             None => {
-                insert_history(&tx, old, as_of, "dropped")?;
                 tx.execute(
                     "DELETE FROM mappings_current WHERE n_number = ?1",
                     params![n],
@@ -226,7 +206,6 @@ pub fn apply_scd2_at(
                 } else {
                     "updated"
                 };
-                insert_history(&tx, old, as_of, kind)?;
                 upsert_current(&tx, new)?;
                 log.push(chg(
                     as_of,
@@ -313,40 +292,6 @@ fn chg(as_of: &str, n: &str, change: &str, detail: &str) -> ChangelogEntry {
         change: change.into(),
         detail: detail.into(),
     }
-}
-
-fn insert_history(
-    tx: &rusqlite::Transaction<'_>,
-    m: &Mapping,
-    valid_to: &str,
-    change_type: &str,
-) -> rusqlite::Result<()> {
-    tx.execute(
-        "INSERT INTO mappings_history
-         (n_number, icao24, serial, make, model, ticker, cik, company_name, registrant_name,
-          match_method, as_of_date, source_url, valid_from, valid_to, change_type, fleet_size,
-          aviation_issuer)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?11,?13,?14,?15,?16)",
-        params![
-            m.n_number,
-            m.icao24,
-            m.serial,
-            m.make,
-            m.model,
-            m.ticker,
-            m.cik,
-            m.company_name,
-            m.registrant_name,
-            m.match_method,
-            m.as_of_date,
-            m.source_url,
-            valid_to,
-            change_type,
-            m.fleet_size as i64,
-            i64::from(m.aviation_issuer),
-        ],
-    )?;
-    Ok(())
 }
 
 fn upsert_current(tx: &rusqlite::Transaction<'_>, m: &Mapping) -> rusqlite::Result<()> {
@@ -451,11 +396,7 @@ mod tests {
         let log = apply_scd2(&mut db, "2026-01-02", &[], &[], &[]).unwrap();
         assert_eq!(log[0].change, "dropped");
         assert!(db.current_mappings().unwrap().is_empty());
-        let n: i64 = db
-            .conn
-            .query_row("SELECT count(*) FROM mappings_history", [], |r| r.get(0))
-            .unwrap();
-        assert_eq!(n, 1);
+        assert_eq!(db.changelog_for("2026-01-02").unwrap().len(), 1);
     }
 
     #[test]
