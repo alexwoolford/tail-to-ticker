@@ -6,15 +6,10 @@ use crate::{require_utc_date, require_utc_instant, ChangelogEntry, Mapping, Unre
 
 pub struct FeedDb {
     conn: Connection,
+    nudge: crate::capture::Nudge,
 }
 
-pub fn open_db(path: &Path) -> anyhow::Result<FeedDb> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let conn = Connection::open(path)?;
-    conn.execute_batch(
-        r#"
+const FEED_DDL: &str = r#"
         CREATE TABLE IF NOT EXISTS mappings_current (
             n_number TEXT PRIMARY KEY,
             icao24 TEXT,
@@ -29,8 +24,9 @@ pub fn open_db(path: &Path) -> anyhow::Result<FeedDb> {
             as_of_date TEXT,
             source_url TEXT,
             fleet_size INTEGER NOT NULL DEFAULT 0,
-            aviation_issuer INTEGER NOT NULL DEFAULT 0
-        );
+            aviation_issuer INTEGER NOT NULL DEFAULT 0,
+            deleted_at INTEGER
+        ) STRICT;
         CREATE TABLE IF NOT EXISTS unresolved_trusts (
             n_number TEXT PRIMARY KEY,
             icao24 TEXT,
@@ -39,7 +35,7 @@ pub fn open_db(path: &Path) -> anyhow::Result<FeedDb> {
             registrant_name TEXT,
             reason TEXT,
             as_of_date TEXT
-        );
+        ) STRICT;
         CREATE TABLE IF NOT EXISTS review_queue (
             n_number TEXT PRIMARY KEY,
             icao24 TEXT,
@@ -53,21 +49,154 @@ pub fn open_db(path: &Path) -> anyhow::Result<FeedDb> {
             match_method TEXT,
             as_of_date TEXT,
             source_url TEXT
-        );
+        ) STRICT;
         CREATE TABLE IF NOT EXISTS changelog (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             as_of_date TEXT,
             n_number TEXT,
             change TEXT,
             detail TEXT
-        );
+        ) STRICT;
         CREATE INDEX IF NOT EXISTS idx_changelog_date ON changelog(as_of_date);
         CREATE TABLE IF NOT EXISTS refresh_run (
             as_of_date TEXT PRIMARY KEY,
             recorded_at TEXT NOT NULL
-        );
+        ) STRICT;
+        "#;
+
+const DB_NAME: &str = "tail-to-ticker";
+const MAPPING_EXCLUDE: &[&str] = &["fleet_size", "aviation_issuer"];
+
+pub fn open_db(path: &Path) -> anyhow::Result<FeedDb> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let conn = Connection::open(path)?;
+    crate::capture::apply_runtime_pragmas(&conn)?;
+    conn.execute_batch(FEED_DDL)?;
+    ensure_column(&conn, "mappings_current", "deleted_at", "INTEGER")?;
+    migrate_strict(&conn)?;
+    conn.execute_batch(FEED_DDL)?;
+    let nudge = install_capture(&conn, path)?;
+    Ok(FeedDb { conn, nudge })
+}
+
+fn install_capture(
+    conn: &Connection,
+    path: &Path,
+) -> anyhow::Result<crate::capture::Nudge> {
+    let tables = [
+        crate::capture::TableSpec::new("mappings_current", crate::capture::CaptureMode::Full)
+            .exclude(MAPPING_EXCLUDE),
+        crate::capture::TableSpec::new("refresh_run", crate::capture::CaptureMode::After),
+        crate::capture::TableSpec::new("changelog", crate::capture::CaptureMode::After),
+    ];
+    crate::capture::install(
+        conn,
+        &crate::capture::CaptureConfig::new(DB_NAME, path, &tables),
+    )
+}
+
+fn ensure_column(conn: &Connection, table: &str, column: &str, decl: &str) -> anyhow::Result<()> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+    let exists = stmt
+        .query_map([], |row| row.get::<_, String>(1))?
+        .any(|name| name.as_deref() == Ok(column));
+    if !exists {
+        conn.execute(&format!("ALTER TABLE {table} ADD COLUMN {column} {decl}"), [])?;
+    }
+    Ok(())
+}
+
+fn migrate_strict(conn: &Connection) -> anyhow::Result<()> {
+    if crate::capture::table_is_strict(conn, "mappings_current")? {
+        return Ok(());
+    }
+    conn.pragma_update(None, "foreign_keys", "OFF")?;
+    conn.execute_batch(
+        r#"
+        CREATE TABLE mappings_current_strict (
+            n_number TEXT PRIMARY KEY,
+            icao24 TEXT,
+            serial TEXT,
+            make TEXT,
+            model TEXT,
+            ticker TEXT NOT NULL,
+            cik TEXT,
+            company_name TEXT,
+            registrant_name TEXT,
+            match_method TEXT,
+            as_of_date TEXT,
+            source_url TEXT,
+            fleet_size INTEGER NOT NULL DEFAULT 0,
+            aviation_issuer INTEGER NOT NULL DEFAULT 0,
+            deleted_at INTEGER
+        ) STRICT;
+        INSERT INTO mappings_current_strict
+            (n_number, icao24, serial, make, model, ticker, cik, company_name,
+             registrant_name, match_method, as_of_date, source_url, fleet_size,
+             aviation_issuer, deleted_at)
+        SELECT n_number, icao24, serial, make, model, ticker, cik, company_name,
+               registrant_name, match_method, as_of_date, source_url, fleet_size,
+               aviation_issuer, deleted_at
+        FROM mappings_current;
+        DROP TABLE mappings_current;
+        ALTER TABLE mappings_current_strict RENAME TO mappings_current;
+
+        CREATE TABLE unresolved_trusts_strict (
+            n_number TEXT PRIMARY KEY,
+            icao24 TEXT,
+            make TEXT,
+            model TEXT,
+            registrant_name TEXT,
+            reason TEXT,
+            as_of_date TEXT
+        ) STRICT;
+        INSERT INTO unresolved_trusts_strict SELECT * FROM unresolved_trusts;
+        DROP TABLE unresolved_trusts;
+        ALTER TABLE unresolved_trusts_strict RENAME TO unresolved_trusts;
+
+        CREATE TABLE review_queue_strict (
+            n_number TEXT PRIMARY KEY,
+            icao24 TEXT,
+            serial TEXT,
+            make TEXT,
+            model TEXT,
+            ticker TEXT,
+            cik TEXT,
+            company_name TEXT,
+            registrant_name TEXT,
+            match_method TEXT,
+            as_of_date TEXT,
+            source_url TEXT
+        ) STRICT;
+        INSERT INTO review_queue_strict SELECT * FROM review_queue;
+        DROP TABLE review_queue;
+        ALTER TABLE review_queue_strict RENAME TO review_queue;
+
+        CREATE TABLE changelog_strict (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            as_of_date TEXT,
+            n_number TEXT,
+            change TEXT,
+            detail TEXT
+        ) STRICT;
+        INSERT INTO changelog_strict (as_of_date, n_number, change, detail)
+        SELECT as_of_date, n_number, change, detail FROM changelog;
+        DROP TABLE changelog;
+        ALTER TABLE changelog_strict RENAME TO changelog;
+
+        CREATE TABLE refresh_run_strict (
+            as_of_date TEXT PRIMARY KEY,
+            recorded_at TEXT NOT NULL
+        ) STRICT;
+        INSERT INTO refresh_run_strict SELECT * FROM refresh_run;
+        DROP TABLE refresh_run;
+        ALTER TABLE refresh_run_strict RENAME TO refresh_run;
         "#,
     )?;
-    Ok(FeedDb { conn })
+    conn.pragma_update(None, "foreign_keys", "ON")?;
+    Ok(())
 }
 
 impl FeedDb {
@@ -76,7 +205,9 @@ impl FeedDb {
             "SELECT n_number, icao24, serial, make, model, ticker, cik, company_name,
                     registrant_name, match_method, as_of_date, source_url, fleet_size,
                     aviation_issuer
-             FROM mappings_current ORDER BY n_number",
+             FROM mappings_current
+             WHERE deleted_at IS NULL
+             ORDER BY n_number",
         )?;
         let rows = stmt.query_map([], mapping_from_row)?;
         Ok(rows.filter_map(|r| r.ok()).collect())
@@ -100,7 +231,11 @@ impl FeedDb {
     pub fn current_mapping_count(&self) -> anyhow::Result<usize> {
         let n: i64 = self
             .conn
-            .query_row("SELECT count(*) FROM mappings_current", [], |r| r.get(0))?;
+            .query_row(
+                "SELECT count(*) FROM mappings_current WHERE deleted_at IS NULL",
+                [],
+                |r| r.get(0),
+            )?;
         Ok(n as usize)
     }
 
@@ -136,7 +271,7 @@ pub fn lookup(db: &FeedDb, n_number: &str) -> anyhow::Result<Option<Mapping>> {
         "SELECT n_number, icao24, serial, make, model, ticker, cik, company_name,
                 registrant_name, match_method, as_of_date, source_url, fleet_size,
                 aviation_issuer
-         FROM mappings_current WHERE n_number = ?1",
+         FROM mappings_current WHERE n_number = ?1 AND deleted_at IS NULL",
     )?;
     Ok(stmt.query_row(params![n], mapping_from_row).optional()?)
 }
@@ -190,7 +325,9 @@ pub fn apply_scd2_at(
         match new_map.get(n) {
             None => {
                 tx.execute(
-                    "DELETE FROM mappings_current WHERE n_number = ?1",
+                    "UPDATE mappings_current
+                     SET deleted_at = CAST(strftime('%s','now') AS INTEGER)
+                     WHERE n_number = ?1 AND deleted_at IS NULL",
                     params![n],
                 )?;
                 log.push(chg(
@@ -217,9 +354,9 @@ pub fn apply_scd2_at(
                     ),
                 ));
             }
-            Some(new) => {
-                // Identity unchanged: still refresh derived columns (fleet_size, aviation_issuer).
-                upsert_current(&tx, new)?;
+            Some(_new) => {
+                // Identity unchanged: do not rewrite the row (quiet days must not
+                // emit a no-op `U` for fleet_size / aviation_issuer churn).
             }
         }
     }
@@ -275,6 +412,7 @@ pub fn apply_scd2_at(
     )?;
 
     tx.commit()?;
+    db.nudge.send();
     Ok(log)
 }
 
@@ -298,14 +436,15 @@ fn upsert_current(tx: &rusqlite::Transaction<'_>, m: &Mapping) -> rusqlite::Resu
     tx.execute(
         "INSERT INTO mappings_current
          (n_number, icao24, serial, make, model, ticker, cik, company_name, registrant_name,
-          match_method, as_of_date, source_url, fleet_size, aviation_issuer)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)
+          match_method, as_of_date, source_url, fleet_size, aviation_issuer, deleted_at)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,NULL)
          ON CONFLICT(n_number) DO UPDATE SET
             icao24=excluded.icao24, serial=excluded.serial, make=excluded.make, model=excluded.model,
             ticker=excluded.ticker, cik=excluded.cik, company_name=excluded.company_name,
             registrant_name=excluded.registrant_name, match_method=excluded.match_method,
             as_of_date=excluded.as_of_date, source_url=excluded.source_url,
-            fleet_size=excluded.fleet_size, aviation_issuer=excluded.aviation_issuer",
+            fleet_size=excluded.fleet_size, aviation_issuer=excluded.aviation_issuer,
+            deleted_at=NULL",
         params![
             m.n_number,
             m.icao24,
@@ -396,11 +535,42 @@ mod tests {
         let log = apply_scd2(&mut db, "2026-01-02", &[], &[], &[]).unwrap();
         assert_eq!(log[0].change, "dropped");
         assert!(db.current_mappings().unwrap().is_empty());
+        assert!(lookup(&db, "N1WM").unwrap().is_none());
+        let n_all: i64 = db
+            .conn
+            .query_row("SELECT count(*) FROM mappings_current", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n_all, 1);
+        let deleted_at: Option<i64> = db
+            .conn
+            .query_row("SELECT deleted_at FROM mappings_current WHERE n_number = 'N1WM'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert!(deleted_at.is_some());
+        let mapping_ops: Vec<String> = outbox_ops(&db)
+            .into_iter()
+            .filter(|(tbl, _)| tbl == "mappings_current")
+            .map(|(_, op)| op)
+            .collect();
+        assert_eq!(mapping_ops, vec!["I".to_string(), "U".to_string()]);
+        assert!(!mapping_ops.iter().any(|op| op == "D"));
         assert_eq!(db.changelog_for("2026-01-02").unwrap().len(), 1);
     }
 
+    fn outbox_ops(db: &FeedDb) -> Vec<(String, String)> {
+        let mut stmt = db
+            .conn
+            .prepare("SELECT tbl, op FROM _outbox ORDER BY seq")
+            .unwrap();
+        stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap()
+    }
+
     #[test]
-    fn scd2_quiet_upsert_refreshes_fleet_size() {
+    fn scd2_quiet_upsert_does_not_refresh_fleet_size() {
         let dir = std::env::temp_dir().join(format!("ttt-scd2-fleet-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -414,11 +584,17 @@ mod tests {
         let log = apply_scd2(&mut db, "2026-01-02", &[day2], &[], &[]).unwrap();
         assert!(log.is_empty(), "fleet_size churn must not write changelog");
         let got = db.current_mappings().unwrap();
-        assert_eq!(got[0].fleet_size, 6);
+        assert_eq!(got[0].fleet_size, 1);
+        let mapping_ops: Vec<String> = outbox_ops(&db)
+            .into_iter()
+            .filter(|(tbl, _)| tbl == "mappings_current")
+            .map(|(_, op)| op)
+            .collect();
+        assert_eq!(mapping_ops, vec!["I".to_string()]);
     }
 
     #[test]
-    fn scd2_quiet_upsert_refreshes_aviation_issuer() {
+    fn scd2_quiet_upsert_does_not_refresh_aviation_issuer() {
         let dir = std::env::temp_dir().join(format!("ttt-scd2-avn-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -435,7 +611,20 @@ mod tests {
             "aviation_issuer churn must not write changelog"
         );
         let got = db.current_mappings().unwrap();
-        assert!(got[0].aviation_issuer);
+        assert!(!got[0].aviation_issuer);
+    }
+
+    #[test]
+    fn opens_with_wal() {
+        let dir = std::env::temp_dir().join(format!("ttt-wal-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = open_db(&dir.join("feed.sqlite")).unwrap();
+        let mode: String = db
+            .conn
+            .pragma_query_value(None, "journal_mode", |r| r.get(0))
+            .unwrap();
+        assert_eq!(mode.to_ascii_lowercase(), "wal");
     }
 
     #[test]

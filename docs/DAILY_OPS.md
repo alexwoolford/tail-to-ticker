@@ -65,7 +65,7 @@ See [`deploy/tail-to-ticker.env.example`](../deploy/tail-to-ticker.env.example).
   current/tail_to_ticker.sqlite # PUBLISHED — journal reads this (mode 644)
 ```
 
-Sqlite has parent table `refresh_run(as_of_date, recorded_at)` for the write instant (`YYYY-MM-DDTHH:MM:SSZ`); mapping/changelog columns stay UTC calendar days.
+Sqlite has parent table `refresh_run(as_of_date, recorded_at)` for the write instant (`YYYY-MM-DDTHH:MM:SSZ`); mapping/changelog columns stay UTC calendar days. Dropped tails stay in `mappings_current` with `deleted_at` (Unix seconds); live reads use `deleted_at IS NULL`.
 
 Upgrades: pull/rsync → `cargo build --release` → `sudo ./deploy/install.sh` (env preserved).
 
@@ -85,7 +85,8 @@ sudo -u tails /opt/tail-to-ticker/bin/tail-to-ticker \
 
 sqlite3 /var/lib/tail-to-ticker/current/tail_to_ticker.sqlite \
   "SELECT count(*) FROM mappings_current
-   WHERE aviation_issuer = 0 AND fleet_size BETWEEN 1 AND 6
+   WHERE deleted_at IS NULL
+     AND aviation_issuer = 0 AND fleet_size BETWEEN 1 AND 6
      AND icao24 IS NOT NULL AND trim(icao24) <> '';"
 ```
 
@@ -102,3 +103,23 @@ TAIL_TO_TICKER_SQLITE=/var/lib/tail-to-ticker/current/tail_to_ticker.sqlite
 ```
 
 Then `systemctl restart adsb-trip-journal-watch.service`.
+
+## State capture (prep)
+
+Logical name: `tail-to-ticker`. Watch the **work** sqlite the refresh job writes, not the published `current/` copy (`VACUUM INTO` / `mv` duplicates `_outbox`).
+
+| Path | Role |
+|---|---|
+| `/var/lib/tail-to-ticker/work/current/tail_to_ticker.sqlite` | Watched. `_outbox` + triggers. |
+| `/var/lib/tail-to-ticker/current/tail_to_ticker.sqlite` | Published snapshot for the journal. Do not watch. |
+
+Capture set: `mappings_current` (full; exclude derived `fleet_size` / `aviation_issuer`), `refresh_run` (after), `changelog` (after). `review_queue` and `unresolved_trusts` are DELETE+reload and are **not** captured.
+
+Env (optional until the collector exists; missing socket is ignored):
+
+```
+STATE_CAPTURE_SOCK=/run/state/collect.sock
+STATE_CAPTURE_ANNOUNCE_DIR=/var/lib/state-capture/announce
+```
+
+If the announce dir cannot be created, `open_db()` writes `{sqlite_dir}/.capturable.json`.
