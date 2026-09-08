@@ -1,12 +1,15 @@
 use std::path::Path;
 
+use capturable_state::{
+    apply_runtime_pragmas, install, table_is_strict, CaptureConfig, CaptureMode, Nudge, TableSpec,
+};
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::{require_utc_date, require_utc_instant, ChangelogEntry, Mapping, Unresolved};
 
 pub struct FeedDb {
     conn: Connection,
-    nudge: crate::capture::Nudge,
+    nudge: Nudge,
 }
 
 const FEED_DDL: &str = r#"
@@ -72,7 +75,7 @@ pub fn open_db(path: &Path) -> anyhow::Result<FeedDb> {
         std::fs::create_dir_all(parent)?;
     }
     let conn = Connection::open(path)?;
-    crate::capture::apply_runtime_pragmas(&conn)?;
+    apply_runtime_pragmas(&conn)?;
     conn.execute_batch(FEED_DDL)?;
     ensure_column(&conn, "mappings_current", "deleted_at", "INTEGER")?;
     migrate_strict(&conn)?;
@@ -81,20 +84,13 @@ pub fn open_db(path: &Path) -> anyhow::Result<FeedDb> {
     Ok(FeedDb { conn, nudge })
 }
 
-fn install_capture(
-    conn: &Connection,
-    path: &Path,
-) -> anyhow::Result<crate::capture::Nudge> {
+fn install_capture(conn: &Connection, path: &Path) -> anyhow::Result<Nudge> {
     let tables = [
-        crate::capture::TableSpec::new("mappings_current", crate::capture::CaptureMode::Full)
-            .exclude(MAPPING_EXCLUDE),
-        crate::capture::TableSpec::new("refresh_run", crate::capture::CaptureMode::After),
-        crate::capture::TableSpec::new("changelog", crate::capture::CaptureMode::After),
+        TableSpec::new("mappings_current", CaptureMode::Full).exclude(MAPPING_EXCLUDE),
+        TableSpec::new("refresh_run", CaptureMode::After),
+        TableSpec::new("changelog", CaptureMode::After),
     ];
-    crate::capture::install(
-        conn,
-        &crate::capture::CaptureConfig::new(DB_NAME, path, &tables),
-    )
+    install(conn, &CaptureConfig::new(DB_NAME, path, &tables))
 }
 
 fn ensure_column(conn: &Connection, table: &str, column: &str, decl: &str) -> anyhow::Result<()> {
@@ -103,13 +99,16 @@ fn ensure_column(conn: &Connection, table: &str, column: &str, decl: &str) -> an
         .query_map([], |row| row.get::<_, String>(1))?
         .any(|name| name.as_deref() == Ok(column));
     if !exists {
-        conn.execute(&format!("ALTER TABLE {table} ADD COLUMN {column} {decl}"), [])?;
+        conn.execute(
+            &format!("ALTER TABLE {table} ADD COLUMN {column} {decl}"),
+            [],
+        )?;
     }
     Ok(())
 }
 
 fn migrate_strict(conn: &Connection) -> anyhow::Result<()> {
-    if crate::capture::table_is_strict(conn, "mappings_current")? {
+    if table_is_strict(conn, "mappings_current")? {
         return Ok(());
     }
     conn.pragma_update(None, "foreign_keys", "OFF")?;
@@ -229,13 +228,11 @@ impl FeedDb {
     }
 
     pub fn current_mapping_count(&self) -> anyhow::Result<usize> {
-        let n: i64 = self
-            .conn
-            .query_row(
-                "SELECT count(*) FROM mappings_current WHERE deleted_at IS NULL",
-                [],
-                |r| r.get(0),
-            )?;
+        let n: i64 = self.conn.query_row(
+            "SELECT count(*) FROM mappings_current WHERE deleted_at IS NULL",
+            [],
+            |r| r.get(0),
+        )?;
         Ok(n as usize)
     }
 
@@ -543,9 +540,11 @@ mod tests {
         assert_eq!(n_all, 1);
         let deleted_at: Option<i64> = db
             .conn
-            .query_row("SELECT deleted_at FROM mappings_current WHERE n_number = 'N1WM'", [], |r| {
-                r.get(0)
-            })
+            .query_row(
+                "SELECT deleted_at FROM mappings_current WHERE n_number = 'N1WM'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert!(deleted_at.is_some());
         let mapping_ops: Vec<String> = outbox_ops(&db)

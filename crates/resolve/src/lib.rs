@@ -1,7 +1,6 @@
 //! Entity resolution: FAA registrant → listed ticker, with provenance.
 
 mod aviation;
-mod capture;
 mod classify;
 mod dates;
 mod eval;

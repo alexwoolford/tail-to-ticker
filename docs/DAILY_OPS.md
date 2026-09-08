@@ -6,6 +6,14 @@ Daily-refreshable **FAA registrant → listed ticker** feed. Not operator, benef
 
 The sibling **adsb-trip-journal** reads the published sqlite **read-only** (`icao24` join). This job must not write `trips.sqlite` or import OpenSky / ADS-B keys.
 
+## Scheduler and telemetry
+
+`tail-to-ticker-refresh.timer` starts a `Type=oneshot` service. Do not add an in-process cron.
+
+Operator logs: `tracing` on stderr → journald (`SyslogIdentifier` matches the unit). Default `RUST_LOG=info`.
+
+`refresh_run` is capturable domain telemetry. Query it in mosaic; do not scrape Prometheus from this oneshot.
+
 ## Cadence
 
 | UTC | Job |
@@ -115,7 +123,9 @@ Logical name: `tail-to-ticker`. Watch the **work** sqlite the refresh job writes
 
 Capture set: `mappings_current` (full; exclude derived `fleet_size` / `aviation_issuer`), `refresh_run` (after), `changelog` (after). `review_queue` and `unresolved_trusts` are DELETE+reload and are **not** captured.
 
-Env (optional until the collector exists; missing socket is ignored):
+Outbox/triggers come from [`capturable-state`](https://github.com/alexwoolford/capturable-state) `v0.1.0`, not a copied `capture.rs`.
+
+Env (collector is `state-capture` on this host; missing socket is ignored):
 
 ```
 STATE_CAPTURE_SOCK=/run/state/collect.sock

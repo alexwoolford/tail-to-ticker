@@ -7,6 +7,7 @@ description = "Tail-to-ticker entity resolution and sqlite feed store"
 
 [dependencies]
 anyhow.workspace = true
+capturable-state.workspace = true
 chrono.workspace = true
 faa-ingest = { path = "../faa-ingest" }
 rusqlite.workspace = true
