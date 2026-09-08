@@ -1,0 +1,13 @@
+# Issuer-level FAA names that should resolve as identity (unique exact name).
+# Keyed by listed CIK, not N-number. Gold registrant_names stay eval-only.
+# Do not put vanity SPVs or uncorroborated EX-21 names here.
+
+aliases:
+  - cik: "0000034088"
+    ticker: XOM
+    name: EXXON MOBIL CORP
+    citation: "FAA MASTER NAME=EXXON MOBIL CORP; gold.yaml companies XOM cik 0000034088"
+  - cik: "0000101829"
+    ticker: RTX
+    name: RAYTHEON CO
+    citation: "FAA MASTER NAME=RAYTHEON CO; gold.yaml companies RTX / RAYTHEON CO"

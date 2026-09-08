@@ -65,7 +65,7 @@ See [`deploy/tail-to-ticker.env.example`](../deploy/tail-to-ticker.env.example).
   bin/tail-to-ticker
   scripts/run-refresh.sh
   docs/DAILY_OPS.md
-  overrides/{mappings,gold,aviation_issuers}.yaml
+  overrides/{mappings,gold,aviation_issuers,issuer_aliases}.yaml
   etc/tail-to-ticker.env
 /var/lib/tail-to-ticker/
   work/current/                 # in-place sqlite while the job runs

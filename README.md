@@ -28,17 +28,19 @@ SELECT * FROM mappings_current
 WHERE aviation_issuer = 0 AND fleet_size BETWEEN 1 AND 6;
 ```
 
-Match methods (highest wins; conflicts are not published):
+Rules decide. Issuer aliases are CIK-level data. [`overrides/mappings.yaml`](overrides/mappings.yaml) is cited **N-numbers** only (vanity SPVs), not a census.
 
-| Method | Published by default? |
-|---|---|
-| `manual_override` | yes |
-| `edgar_nnumber` | yes (N-number must exist in FAA MASTER) |
-| `exact_legal_name` | yes, when corroborated (ticker, parent brand token, or N-number SPV) |
-| `ex21_subsidiary` | yes, when corroborated the same way |
-| `address_cluster` | review queue only (`--publish-address-cluster` to include) |
+Join types (highest wins; conflicts are not published):
 
-Exact-name and Exhibit 21 hits that match a unique key but are not corroborated (namesake cores such as REACH / LEAR HOLDING) land on the review queue.
+| Type | Evidence | Gate | `match_method` |
+|---|---|---|---|
+| Cited tail | Public citation on **that N-number** | [`mappings.yaml`](overrides/mappings.yaml) | `manual_override` |
+| Filing | N-number in that CIK’s EDGAR text **and** in MASTER | Unique CIK | `edgar_nnumber` |
+| Identity | FAA registrant = listed legal name **or** a unique [`issuer_aliases.yaml`](overrides/issuer_aliases.yaml) / former name | Uniqueness only | `exact_legal_name` |
+| Subsidiary | Unique Exhibit 21 name of that CIK | Corroboration: ticker token, N-number SPV, or shared brand token. Identity-suffix namesakes (REACH / LEAR HOLDING) fail | `ex21_subsidiary` |
+| Address | Unique HQ street | Review only (`--publish-address-cluster` to include) | `address_cluster` |
+
+Company-by-company review **classifies** a miss (identity alias vs subsidiary corroboration vs cited tail vs not our join). It does not add a yaml tail unless the type is cited tail.
 
 Bank trustees, fractionals (NetJets, Flexjet, …), and Part 121 airline fleets are excluded. Trustee bizjets land in `unresolved_trusts` for a later veil-piercing pass.
 
@@ -48,7 +50,7 @@ When one CIK has many SEC tickers (common + preferreds), the feed emits the **pr
 
 - **Registrant, not owner.** The FAA name on the airframe is the join key. Delaware trusts, LLC SPVs, and lessors are usually not the listed issuer. Do not treat a row as “Walmart’s jet” without reading `registrant_name` and `match_method`.
 - **OEM and aviation issuers are in the table.** Textron/Bell, Boeing, Northrop, Garmin, Bristow, GE Aviation, aircraft lessors match because they *are* the registrant. Filter `aviation_issuer = 0` (and optionally `fleet_size BETWEEN 1 AND 6`) for flight departments.
-- **Low recall.** Hundreds of published rows vs hundreds of thousands of MASTER records. Coverage is the corroborated public-name slice, not a census of corporate aviation.
+- **Low recall.** Hundreds of published rows vs hundreds of thousands of MASTER records. Coverage is unique public identity plus corroborated Exhibit 21, not a census of corporate aviation.
 - **Host feed vs GitHub artifacts.** Production for adsb-trip-journal is the host systemd timer on ct-firehose, which atomically publishes `/var/lib/tail-to-ticker/current/tail_to_ticker.sqlite`. [`.github/workflows/refresh.yml`](.github/workflows/refresh.yml) (cron 07:00 UTC + `workflow_dispatch`) is an **optional artifact backup** (sqlite + changelog retained 14 days). It is not the consumer path and does not replace the host timer. Local `refresh` **re-downloads** FAA, SEC tickers, and PUDL Exhibit 21 unless you pass `--use-cache` or `--skip-download`. Set repo secret / env `SEC_USER_AGENT` to a real contact; placeholder `example.com` is rejected on network fetches.
 - **Refresh fail-closed.** Empty/truncated MASTER (production runs require ≥300k parsed rows; `--skip-download` skips that floor), empty Exhibit 21 (unless `--skip-pudl` or an explicit `--ex21` fixture), published-row collapse vs the previous table (below max(50, N/2)), or gold unpublished-tail false positives abort before overwrite.
 - **Precision is a labeled sample, not a score.** After a local refresh, `evidence/export_published_precision_sample.py` and `evidence/write_published_precision_verdicts.py` write a seed-43 sample and verdicts (n=70) under `evidence/`. Those CSVs are gitignored; they are not part of the repo. SQLite does not store a `confidence` column.

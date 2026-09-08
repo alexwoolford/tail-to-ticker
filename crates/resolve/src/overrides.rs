@@ -3,6 +3,9 @@ use std::path::Path;
 
 use serde::Deserialize;
 
+use crate::normalize::normalize_name;
+use sec_universe::{pad_cik, Company};
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct OverrideFile {
     #[serde(default)]
@@ -52,6 +55,22 @@ pub struct GoldCompany {
     pub registrant_names: Vec<String>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct IssuerAliasFile {
+    #[serde(default)]
+    pub aliases: Vec<IssuerAlias>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct IssuerAlias {
+    pub cik: String,
+    pub name: String,
+    #[serde(default)]
+    pub ticker: String,
+    #[serde(default)]
+    pub citation: String,
+}
+
 pub fn load_overrides(path: &Path) -> anyhow::Result<HashMap<String, OverrideEntry>> {
     let text = std::fs::read_to_string(path)?;
     let file: OverrideFile = serde_yaml::from_str(&text)?;
@@ -76,6 +95,56 @@ pub fn load_gold(path: &Path) -> anyhow::Result<GoldFile> {
         t.must_not_ticker = t.must_not_ticker.to_uppercase();
     }
     Ok(gold)
+}
+
+pub fn load_issuer_aliases(path: &Path) -> anyhow::Result<Vec<IssuerAlias>> {
+    let text = std::fs::read_to_string(path)?;
+    let file: IssuerAliasFile = serde_yaml::from_str(&text)?;
+    let mut out = Vec::new();
+    for mut a in file.aliases {
+        a.cik = pad_cik(&a.cik);
+        a.name = a.name.trim().to_string();
+        a.ticker = a.ticker.trim().to_uppercase();
+        if a.name.is_empty() {
+            anyhow::bail!("issuer alias for CIK {} has empty name", a.cik);
+        }
+        if a.citation.trim().is_empty() {
+            anyhow::bail!("issuer alias {} / {} missing citation", a.cik, a.name);
+        }
+        out.push(a);
+    }
+    Ok(out)
+}
+
+/// Index aliases as former names on the matching listed CIK, or ticker if the
+/// ticker file has a different CIK for that symbol (XOM cache vs gold).
+pub fn apply_issuer_aliases(companies: &mut [Company], aliases: &[IssuerAlias]) -> usize {
+    let mut applied = 0usize;
+    for a in aliases {
+        let key = normalize_name(&a.name);
+        if key.is_empty() {
+            continue;
+        }
+        let ticker = a.ticker.trim().to_uppercase();
+        for c in companies.iter_mut() {
+            let cik_hit = c.cik == a.cik;
+            let ticker_hit = !ticker.is_empty() && c.ticker.trim().to_uppercase() == ticker;
+            if !cik_hit && !ticker_hit {
+                continue;
+            }
+            let already = c
+                .former_names
+                .iter()
+                .any(|n| normalize_name(n) == key)
+                || normalize_name(&c.name) == key;
+            if already {
+                continue;
+            }
+            c.former_names.push(a.name.clone());
+            applied += 1;
+        }
+    }
+    applied
 }
 
 pub fn unpublished_by_n(gold: &GoldFile) -> HashMap<String, String> {
@@ -115,5 +184,41 @@ mod tests {
                 e.n_number
             );
         }
+    }
+
+    #[test]
+    fn issuer_aliases_have_citations() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../overrides/issuer_aliases.yaml");
+        let aliases = load_issuer_aliases(&path).unwrap();
+        assert!(!aliases.is_empty());
+        for a in &aliases {
+            assert!(!a.cik.is_empty());
+            assert!(!a.name.is_empty());
+            assert!(!a.citation.trim().is_empty());
+        }
+    }
+
+    #[test]
+    fn apply_alias_by_ticker_when_cik_missing() {
+        let mut companies = vec![Company {
+            cik: "0002115436".into(),
+            ticker: "XOM".into(),
+            name: "ExxonMobil Holdings Corp".into(),
+            exchange: "NYSE".into(),
+            former_names: Vec::new(),
+            street: String::new(),
+            city: String::new(),
+            state: String::new(),
+        }];
+        let aliases = load_issuer_aliases(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../overrides/issuer_aliases.yaml"),
+        )
+        .unwrap();
+        let n = apply_issuer_aliases(&mut companies, &aliases);
+        assert!(n >= 1);
+        assert!(companies[0]
+            .former_names
+            .iter()
+            .any(|n| n.eq_ignore_ascii_case("EXXON MOBIL CORP")));
     }
 }
