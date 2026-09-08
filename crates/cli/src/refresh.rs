@@ -355,6 +355,8 @@ fn write_outputs(opts: &RefreshOpts, as_of: &str, out: Gated) -> Result<()> {
         &out.review_queue,
         &out.unresolved,
     )?;
+    db.wal_checkpoint()?;
+    drop(db);
     std::fs::copy(&db_path, snap.join("tail_to_ticker.sqlite"))?;
 
     let mut buf = String::new();
