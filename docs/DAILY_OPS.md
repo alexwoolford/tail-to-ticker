@@ -27,7 +27,7 @@ A tail that appears in the 07:00 map is eligible for watch the same UTC day and 
 
 ## Deploy (systemd)
 
-**Prefer rsync or git clone + [`deploy/install.sh`](../deploy/install.sh) + systemd.** Same `/opt` + `/var/lib` split as adsb-trip-journal on this host. Build **on the box** (`aarch64-unknown-linux-gnu`); do not copy a Mac binary. Do not run production from `$HOME` with cron. Do not collide with Docker **ct-firehose-filter**. GitHub Actions `refresh.yml` is an optional artifact backup; the journal reads the host-published sqlite, not those artifacts.
+**Prefer rsync or git clone + [`deploy/install.sh`](../deploy/install.sh) + systemd.** Same `/opt` + `/var/lib` split as adsb-trip-journal on this host. Build **on the box** (`aarch64-unknown-linux-gnu`); do not copy a Mac binary. Do not run production from `$HOME` with cron. Do not collide with Docker **ct-firehose-filter**. GitHub Actions `refresh.yml` is an optional CI-hosted refresh. It does **not** upload sqlite (this repo is public). The journal reads the host-published file.
 
 Host prerequisites: outbound HTTPS to `registry.faa.gov`, `www.sec.gov`, and PUDL Exhibit 21; Rust toolchain (or a prebuilt aarch64 binary); `SEC_USER_AGENT` with a real contact (not `example.com`).
 
@@ -53,6 +53,7 @@ Default `refresh` **re-downloads** sources. Do not pass `--use-cache` on the tim
 - Zip: `https://registry.faa.gov/database/ReleasableAircraft.zip` (~70 MB) — `MASTER.txt` + `ACFTREF.txt`. Nightly ~05:30 UTC. No per-tail API.
 - `FAA_USER_AGENT` (Safari-like default) is for `registry.faa.gov` only; `SEC_USER_AGENT` is the SEC fair-access contact. Do not send the FAA token to SEC.
 - This OCI IP 403s SEC company-tickers JSON; refresh falls back to `cache/company_tickers_exchange.json`. FAA stays fail-closed.
+- **SEC cache age:** `stat /var/lib/tail-to-ticker/cache/company_tickers_exchange.json`. If the file is older than **7 days**, the listed-ticker universe may be stale (new listings missing, tickers renamed). Fetch a fresh `company_tickers_exchange.json` from a network that is not 403’d (laptop, or a one-shot copy into `cache/`) and re-run refresh. Do not treat a successful refresh as “SEC was live” when the log says it used cache.
 - Do not set `HTTPS_PROXY` on the tails unit (IPRoyal CONNECT-403s `.gov`). Never put a proxy on adsb-trip-journal.
 
 See [`deploy/tail-to-ticker.env.example`](../deploy/tail-to-ticker.env.example).
@@ -97,6 +98,16 @@ sqlite3 /var/lib/tail-to-ticker/current/tail_to_ticker.sqlite \
      AND aviation_issuer = 0 AND fleet_size BETWEEN 1 AND 6
      AND icao24 IS NOT NULL AND trim(icao24) <> '';"
 ```
+
+## Timer failed
+
+`Persistent=true` will retry after a reboot. It will not page you.
+
+1. `systemctl is-failed tail-to-ticker-refresh.service` and `systemctl list-timers 'tail-to-ticker-*'`.
+2. `journalctl -u tail-to-ticker-refresh.service -n 80 --no-pager`. FAA 403 aborts before publish (`current/` stays). SEC 403 should fall back to cache — then check cache age (above).
+3. Confirm `SEC_USER_AGENT` is set and not `example.com` (`install.sh` will not enable the timer otherwise).
+4. Leave `current/` alone. Re-run: `sudo systemctl start tail-to-ticker-refresh.service`.
+5. If a fail-closed gate tripped (MASTER rows, EX-21, gold unpublished), fix the source or overrides and re-run; do not `--use-cache` on the timer.
 
 Manual refresh (after `SEC_USER_AGENT` is set):
 
