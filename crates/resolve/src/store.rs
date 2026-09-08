@@ -236,6 +236,12 @@ impl FeedDb {
         Ok(n as usize)
     }
 
+    /// Flush WAL into the main file so a byte-copy of this path is consistent.
+    pub fn wal_checkpoint(&self) -> anyhow::Result<()> {
+        self.conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
+        Ok(())
+    }
+
     pub fn unresolved_trust_count(&self) -> anyhow::Result<i64> {
         Ok(self
             .conn
@@ -624,6 +630,31 @@ mod tests {
             .pragma_query_value(None, "journal_mode", |r| r.get(0))
             .unwrap();
         assert_eq!(mode.to_ascii_lowercase(), "wal");
+    }
+
+    #[test]
+    fn wal_checkpoint_makes_byte_copy_see_new_rows() {
+        let dir = std::env::temp_dir().join(format!("ttt-wal-copy-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("feed.sqlite");
+        let copy = dir.join("copy.sqlite");
+        {
+            let mut db = open_db(&path).unwrap();
+            apply_scd2(
+                &mut db,
+                "2026-09-08",
+                &[map("N83HD", "HD", "manual_override", "2026-09-08")],
+                &[],
+                &[],
+            )
+            .unwrap();
+            db.wal_checkpoint().unwrap();
+        }
+        std::fs::copy(&path, &copy).unwrap();
+        let copied = open_db(&copy).unwrap();
+        assert_eq!(copied.current_mapping_count().unwrap(), 1);
+        assert_eq!(lookup(&copied, "N83HD").unwrap().unwrap().ticker, "HD");
     }
 
     #[test]
