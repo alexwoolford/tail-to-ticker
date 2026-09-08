@@ -102,9 +102,18 @@ mod tests {
     }
 
     #[test]
-    fn empty_overrides_ok() {
+    fn overrides_have_citations() {
         let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../overrides/mappings.yaml");
         let ov = load_overrides(&path).unwrap();
-        assert!(ov.is_empty());
+        assert!(!ov.is_empty(), "cited gold-miss / at-risk TPs");
+        for e in ov.values() {
+            assert!(!e.n_number.is_empty());
+            assert!(!e.ticker.is_empty());
+            assert!(
+                !e.citation.trim().is_empty(),
+                "{} missing citation",
+                e.n_number
+            );
+        }
     }
 }

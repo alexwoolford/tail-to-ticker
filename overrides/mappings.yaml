@@ -3,4 +3,69 @@
 # before a mapping can be published from other methods; overrides win if present
 # and the airframe is in the corporate-aviation universe.
 
-mappings: []
+mappings:
+  # Gold at-risk TPs held by corroboration (vanity / non-brand SPV names).
+  - n_number: N40D
+    ticker: DOW
+    cik: "0001751788"
+    company_name: Dow Inc.
+    citation: "gold.yaml tails; audit 2026-08-31 WARBLER I LLC vanity SPV"
+  - n_number: N340FL
+    ticker: ARHS
+    cik: "0001875444"
+    company_name: Arhaus, Inc.
+    citation: "gold.yaml tails; audit 2026-08-31 HINES HILL AVIATION LLC Boston Heights OH"
+  # Unique EX-21 HOMERLEASE CO INC; corroboration refuses HOME vs HOMERLEASE.
+  - n_number: N83HD
+    ticker: HD
+    cik: "0000354950"
+    company_name: The Home Depot, Inc.
+    citation: "FAA MASTER NAME=HOMERLEASE CO INC; unique Exhibit 21 of The Home Depot, Inc."
+  - n_number: N84HD
+    ticker: HD
+    cik: "0000354950"
+    company_name: The Home Depot, Inc.
+    citation: "FAA MASTER NAME=HOMERLEASE CO INC; unique Exhibit 21 of The Home Depot, Inc."
+  - n_number: N85HD
+    ticker: HD
+    cik: "0000354950"
+    company_name: The Home Depot, Inc.
+    citation: "FAA MASTER NAME=HOMERLEASE CO INC; unique Exhibit 21 of The Home Depot, Inc."
+  - n_number: N86HD
+    ticker: HD
+    cik: "0000354950"
+    company_name: The Home Depot, Inc.
+    citation: "FAA MASTER NAME=HOMERLEASE CO INC; unique Exhibit 21 of The Home Depot, Inc."
+  - n_number: N87HD
+    ticker: HD
+    cik: "0000354950"
+    company_name: The Home Depot, Inc.
+    citation: "FAA MASTER NAME=HOMERLEASE CO INC; unique Exhibit 21 of The Home Depot, Inc."
+  # FAA registrant is the listed legal name; SEC company_tickers row for XOM
+  # in cache is a different CIK/name so exact_legal_name never fires.
+  - n_number: N100A
+    ticker: XOM
+    cik: "0000034088"
+    company_name: Exxon Mobil Corp
+    citation: "FAA MASTER NAME=EXXON MOBIL CORP; gold.yaml companies XOM cik 0000034088"
+  - n_number: N200A
+    ticker: XOM
+    cik: "0000034088"
+    company_name: Exxon Mobil Corp
+    citation: "FAA MASTER NAME=EXXON MOBIL CORP; gold.yaml companies XOM cik 0000034088"
+  - n_number: N285EM
+    ticker: XOM
+    cik: "0000034088"
+    company_name: Exxon Mobil Corp
+    citation: "FAA MASTER NAME=EXXON MOBIL CORP; gold.yaml companies XOM cik 0000034088"
+  # RAYTHEON CO on MASTER; listed ticker is RTX (successor), not indexed as RAYTHEON.
+  - n_number: N289MT
+    ticker: RTX
+    cik: "0000101829"
+    company_name: RTX Corp
+    citation: "FAA MASTER NAME=RAYTHEON CO; gold.yaml companies RTX / RAYTHEON CO"
+  - n_number: N601RC
+    ticker: RTX
+    cik: "0000101829"
+    company_name: RTX Corp
+    citation: "FAA MASTER NAME=RAYTHEON CO; gold.yaml companies RTX / RAYTHEON CO"
