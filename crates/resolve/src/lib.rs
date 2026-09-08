@@ -19,8 +19,8 @@ pub use eval::{evaluate_gold, EvalReport};
 pub use matchers::{resolve_all, ResolveOutput};
 pub use normalize::{name_match_corroborated, normalize_address, normalize_name};
 pub use overrides::{
-    load_gold, load_overrides, unpublished_by_n, GoldCompany, GoldFile, OverrideEntry,
-    UnpublishedTail,
+    apply_issuer_aliases, load_gold, load_issuer_aliases, load_overrides, unpublished_by_n,
+    GoldCompany, GoldFile, IssuerAlias, OverrideEntry, UnpublishedTail,
 };
 pub use store::{apply_scd2, lookup, open_db, FeedDb};
 

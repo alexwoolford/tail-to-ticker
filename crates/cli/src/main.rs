@@ -74,6 +74,8 @@ enum Commands {
         gold: PathBuf,
         #[arg(long, default_value = "overrides/aviation_issuers.yaml")]
         aviation_issuers: PathBuf,
+        #[arg(long, default_value = "overrides/issuer_aliases.yaml")]
+        issuer_aliases: PathBuf,
     },
     /// Look up one N-number in the current SQLite feed.
     Lookup {
@@ -123,6 +125,7 @@ async fn main() -> Result<()> {
             publish_address_cluster,
             gold,
             aviation_issuers,
+            issuer_aliases,
         } => {
             refresh::run(refresh::RefreshOpts {
                 data_dir: cli.data_dir,
@@ -144,6 +147,7 @@ async fn main() -> Result<()> {
                 overrides,
                 gold,
                 aviation_issuers,
+                issuer_aliases,
                 skip_download,
                 use_cache,
                 skip_pudl,

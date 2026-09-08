@@ -186,7 +186,8 @@ pub fn resolve_all(
                     as_of,
                     faa_source,
                 );
-                hold_or_publish(m, &norm, &hit, &mut published, &mut review_queue);
+                // Identity: unique listed name or alias. Corroboration is EX-21 only.
+                published.push(m);
                 continue;
             }
             Unique::Many(tickers) => {
@@ -500,6 +501,34 @@ mod tests {
             false,
         );
         assert_eq!(out.published[0].ticker, "WMT");
+    }
+
+    #[test]
+    fn issuer_alias_identity_skips_parent_brand_corroboration() {
+        let rtx = Company {
+            cik: "0000101829".into(),
+            ticker: "RTX".into(),
+            name: "RTX Corp".into(),
+            exchange: "NYSE".into(),
+            former_names: vec!["RAYTHEON CO".into()],
+            street: String::new(),
+            city: String::new(),
+            state: String::new(),
+        };
+        let out = resolve_all(
+            &[jet("N289MT", "RAYTHEON CO")],
+            &[rtx],
+            &[],
+            &[],
+            &HashMap::new(),
+            &HashMap::new(),
+            "2026-09-08",
+            "faa:test",
+            false,
+        );
+        assert_eq!(out.published.len(), 1);
+        assert_eq!(out.published[0].ticker, "RTX");
+        assert_eq!(out.published[0].match_method, EXACT_LEGAL_NAME);
     }
 
     #[test]

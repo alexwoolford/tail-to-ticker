@@ -29,6 +29,10 @@ test -f "$OVERRIDES/aviation_issuers.yaml" || {
   echo "missing $OVERRIDES/aviation_issuers.yaml" >&2
   exit 1
 }
+test -f "$OVERRIDES/issuer_aliases.yaml" || {
+  echo "missing $OVERRIDES/issuer_aliases.yaml" >&2
+  exit 1
+}
 
 mkdir -p "$DATA" "$CACHE" "$(dirname "$PUBLISH")"
 
@@ -58,7 +62,8 @@ echo "bin=$BIN data=$DATA cache=$CACHE publish=$PUBLISH"
   --as-of "$AS_OF" \
   --overrides "$OVERRIDES/mappings.yaml" \
   --gold "$OVERRIDES/gold.yaml" \
-  --aviation-issuers "$OVERRIDES/aviation_issuers.yaml"
+  --aviation-issuers "$OVERRIDES/aviation_issuers.yaml" \
+  --issuer-aliases "$OVERRIDES/issuer_aliases.yaml"
 
 SRC="$DATA/snapshots/$AS_OF/tail_to_ticker.sqlite"
 test -s "$SRC" || {

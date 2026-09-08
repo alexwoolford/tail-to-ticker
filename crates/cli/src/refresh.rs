@@ -4,9 +4,10 @@ use anyhow::{Context, Result};
 use chrono::Utc;
 use faa_ingest::{download_registry_to, parse_registry_zip};
 use resolve::{
-    annotate_aviation_issuer, apply_scd2, evaluate_gold, is_utc_date, load_aviation_issuers,
-    load_edgar_jsonl, load_gold, load_overrides, open_db, published_row_floor, resolve_all,
-    unpublished_by_n, AviationIssuers, EdgarHit, GoldFile, Mapping,
+    annotate_aviation_issuer, apply_issuer_aliases, apply_scd2, evaluate_gold, is_utc_date,
+    load_aviation_issuers, load_edgar_jsonl, load_gold, load_issuer_aliases, load_overrides,
+    open_db, published_row_floor, resolve_all, unpublished_by_n, AviationIssuers, EdgarHit,
+    GoldFile, Mapping,
 };
 use sec_universe::{
     apply_addresses, download_ex21_parquet, download_tickers, load_addresses_json, load_ex21,
@@ -29,6 +30,7 @@ pub struct RefreshOpts {
     pub overrides: PathBuf,
     pub gold: PathBuf,
     pub aviation_issuers: PathBuf,
+    pub issuer_aliases: PathBuf,
     pub skip_download: bool,
     pub use_cache: bool,
     pub skip_pudl: bool,
@@ -139,6 +141,23 @@ async fn load_sources(opts: &RefreshOpts, mode: SourceMode) -> Result<Sources> {
             apply_addresses(&mut companies, &addrs);
             tracing::info!(addresses = addrs.len(), "merged cached HQ addresses");
         }
+    }
+
+    if opts.issuer_aliases.exists() {
+        let aliases = load_issuer_aliases(&opts.issuer_aliases).with_context(|| {
+            format!("issuer aliases {}", opts.issuer_aliases.display())
+        })?;
+        let n = apply_issuer_aliases(&mut companies, &aliases);
+        tracing::info!(
+            aliases = aliases.len(),
+            applied = n,
+            "issuer identity aliases"
+        );
+    } else {
+        tracing::warn!(
+            path = %opts.issuer_aliases.display(),
+            "issuer_aliases file missing"
+        );
     }
 
     let ex21_explicit = opts.ex21.is_some();

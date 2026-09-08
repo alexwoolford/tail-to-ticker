@@ -1,10 +1,11 @@
-# Manual overrides. Only add an N-number here with a public citation.
+# Cited N-numbers only (vanity SPVs / subsidiary corroboration FNs).
+# Issuer identity aliases belong in issuer_aliases.yaml, not here.
 # The resolver still requires the tail to exist in the current FAA MASTER file
 # before a mapping can be published from other methods; overrides win if present
 # and the airframe is in the corporate-aviation universe.
 
 mappings:
-  # Gold at-risk TPs held by corroboration (vanity / non-brand SPV names).
+  # Gold at-risk TPs: vanity / non-brand SPV names with no identity overlap.
   - n_number: N40D
     ticker: DOW
     cik: "0001751788"
@@ -41,31 +42,3 @@ mappings:
     cik: "0000354950"
     company_name: The Home Depot, Inc.
     citation: "FAA MASTER NAME=HOMERLEASE CO INC; unique Exhibit 21 of The Home Depot, Inc."
-  # FAA registrant is the listed legal name; SEC company_tickers row for XOM
-  # in cache is a different CIK/name so exact_legal_name never fires.
-  - n_number: N100A
-    ticker: XOM
-    cik: "0000034088"
-    company_name: Exxon Mobil Corp
-    citation: "FAA MASTER NAME=EXXON MOBIL CORP; gold.yaml companies XOM cik 0000034088"
-  - n_number: N200A
-    ticker: XOM
-    cik: "0000034088"
-    company_name: Exxon Mobil Corp
-    citation: "FAA MASTER NAME=EXXON MOBIL CORP; gold.yaml companies XOM cik 0000034088"
-  - n_number: N285EM
-    ticker: XOM
-    cik: "0000034088"
-    company_name: Exxon Mobil Corp
-    citation: "FAA MASTER NAME=EXXON MOBIL CORP; gold.yaml companies XOM cik 0000034088"
-  # RAYTHEON CO on MASTER; listed ticker is RTX (successor), not indexed as RAYTHEON.
-  - n_number: N289MT
-    ticker: RTX
-    cik: "0000101829"
-    company_name: RTX Corp
-    citation: "FAA MASTER NAME=RAYTHEON CO; gold.yaml companies RTX / RAYTHEON CO"
-  - n_number: N601RC
-    ticker: RTX
-    cik: "0000101829"
-    company_name: RTX Corp
-    citation: "FAA MASTER NAME=RAYTHEON CO; gold.yaml companies RTX / RAYTHEON CO"
