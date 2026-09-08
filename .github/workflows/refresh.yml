@@ -1,5 +1,5 @@
-# Optional artifact backup (sqlite + changelog, 14-day retention).
-# The consumer path is the host systemd timer on ct-firehose, not these artifacts.
+# Optional GitHub-hosted refresh. Canonical publish is the host systemd timer.
+# Do not upload sqlite/changelog artifacts — this repo is public.
 name: refresh
 
 on:
@@ -27,11 +27,4 @@ jobs:
         env:
           SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
         run: cargo run --release -p tail-to-ticker -- refresh
-      - uses: actions/upload-artifact@v4
-        with:
-          name: tail-to-ticker-${{ github.run_id }}
-          path: |
-            data/current/tail_to_ticker.sqlite
-            data/snapshots/*/changelog.jsonl
-          retention-days: 14
-          if-no-files-found: error
+      # No upload-artifact: a public repo must not publish the mapping sqlite.
