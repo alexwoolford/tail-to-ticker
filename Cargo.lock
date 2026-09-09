@@ -636,6 +636,7 @@ dependencies = [
  "csv",
  "http-get",
  "reqwest",
+ "rusqlite",
  "serde",
  "sha2",
  "thiserror",

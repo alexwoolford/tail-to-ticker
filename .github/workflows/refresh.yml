@@ -1,30 +1,17 @@
 # Optional GitHub-hosted refresh. Canonical publish is the host systemd timer.
 # Do not upload sqlite/changelog artifacts — this repo is public.
+# Refresh reads faa-registry-mirror published sqlite, which this runner does not have.
 name: refresh
 
 on:
-  schedule:
-    - cron: "0 7 * * *"
   workflow_dispatch:
 
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: Require SEC_USER_AGENT secret
-        env:
-          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+      - name: Host timer only
         run: |
-          if [ -z "$SEC_USER_AGENT" ] || echo "$SEC_USER_AGENT" | grep -qi example.com; then
-            echo "Set repo secret SEC_USER_AGENT to a real SEC-compliant contact."
-            exit 1
-          fi
-      - name: Refresh feed
-        env:
-          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
-        run: cargo run --release -p tail-to-ticker -- refresh
-      # No upload-artifact: a public repo must not publish the mapping sqlite.
+          echo "tail-to-ticker refresh no longer downloads ReleasableAircraft.zip."
+          echo "Canonical job is tail-to-ticker-refresh.timer on ct-firehose (FAA_REGISTRY_DB)."
+          echo "This workflow does not have the published FAA sqlite; not running refresh."

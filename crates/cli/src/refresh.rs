@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use chrono::Utc;
-use faa_ingest::{download_registry_to, parse_registry_zip};
+use faa_ingest::{load_current_aircraft, parse_registry_zip, DEFAULT_PUBLISHED_DB};
 use resolve::{
     annotate_aviation_issuer, apply_issuer_aliases, apply_scd2, evaluate_gold, is_utc_date,
     load_aviation_issuers, load_edgar_jsonl, load_gold, load_issuer_aliases, load_overrides,
@@ -20,9 +20,9 @@ pub struct RefreshOpts {
     pub data_dir: PathBuf,
     pub cache_dir: PathBuf,
     pub user_agent: String,
-    pub faa_user_agent: String,
     pub as_of: Option<String>,
     pub faa_zip: Option<PathBuf>,
+    pub faa_db: Option<PathBuf>,
     pub tickers_json: Option<PathBuf>,
     pub ex21: Option<PathBuf>,
     pub addresses_json: Option<PathBuf>,
@@ -101,29 +101,12 @@ struct Sources {
 }
 
 async fn load_sources(opts: &RefreshOpts, mode: SourceMode) -> Result<Sources> {
-    let zip_path = opts
-        .faa_zip
-        .clone()
-        .unwrap_or_else(|| opts.cache_dir.join("ReleasableAircraft.zip"));
-    let faa_explicit = opts.faa_zip.is_some();
-    let faa_bytes = if use_local(mode, faa_explicit, zip_path.exists()) {
-        if !zip_path.exists() {
-            anyhow::bail!(
-                "FAA zip not found at {} and --skip-download/--use-cache set",
-                zip_path.display()
-            );
-        }
-        std::fs::read(&zip_path)?
-    } else {
-        require_network_user_agent(&opts.user_agent)?;
-        let (bytes, _sha) = download_registry_to(&zip_path, &opts.faa_user_agent).await?;
-        bytes
-    };
-    let (aircraft, acftref_n) = parse_registry_zip(&faa_bytes)?;
+    let (aircraft, faa_source, acftref_n) = load_faa_aircraft(opts)?;
     tracing::info!(
         aircraft = aircraft.len(),
         acftref = acftref_n,
-        "parsed FAA registry"
+        source = %faa_source.display(),
+        "loaded FAA registry"
     );
     check_master_count(aircraft.len(), mode.skip_master_floor())?;
 
@@ -144,9 +127,8 @@ async fn load_sources(opts: &RefreshOpts, mode: SourceMode) -> Result<Sources> {
     }
 
     if opts.issuer_aliases.exists() {
-        let aliases = load_issuer_aliases(&opts.issuer_aliases).with_context(|| {
-            format!("issuer aliases {}", opts.issuer_aliases.display())
-        })?;
+        let aliases = load_issuer_aliases(&opts.issuer_aliases)
+            .with_context(|| format!("issuer aliases {}", opts.issuer_aliases.display()))?;
         let n = apply_issuer_aliases(&mut companies, &aliases);
         tracing::info!(
             aliases = aliases.len(),
@@ -169,20 +151,19 @@ async fn load_sources(opts: &RefreshOpts, mode: SourceMode) -> Result<Sources> {
         );
     }
 
-    let edgar_path = opts.edgar_jsonl.clone().unwrap_or_else(|| {
-        let p = PathBuf::from("evidence/edgar_hits.jsonl");
-        if p.exists() {
-            p
-        } else {
-            opts.cache_dir.join("edgar_hits.jsonl")
-        }
-    });
-    let edgar_hits = if edgar_path.exists() {
-        load_edgar_jsonl(&edgar_path)?
-    } else {
-        Vec::new()
+    let edgar_path = resolve_edgar_jsonl(opts.edgar_jsonl.clone(), &opts.overrides);
+    let edgar_hits = match &edgar_path {
+        Some(p) if p.exists() => load_edgar_jsonl(p)?,
+        _ => Vec::new(),
     };
-    tracing::info!(edgar_hits = edgar_hits.len(), "EDGAR harvest hits");
+    tracing::info!(
+        path = %edgar_path
+            .as_ref()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "(none)".into()),
+        edgar_hits = edgar_hits.len(),
+        "EDGAR allowlist hits"
+    );
 
     let overrides = if opts.overrides.exists() {
         load_overrides(&opts.overrides)?
@@ -191,21 +172,16 @@ async fn load_sources(opts: &RefreshOpts, mode: SourceMode) -> Result<Sources> {
         Default::default()
     };
     let gold = if opts.gold.exists() {
-        Some(
-            load_gold(&opts.gold).with_context(|| format!("gold file {}", opts.gold.display()))?,
-        )
+        Some(load_gold(&opts.gold).with_context(|| format!("gold file {}", opts.gold.display()))?)
     } else {
         tracing::warn!(path = %opts.gold.display(), "gold file missing; unpublished-tail gate skipped");
         None
     };
-    let unpublished = gold
-        .as_ref()
-        .map(unpublished_by_n)
-        .unwrap_or_default();
+    let unpublished = gold.as_ref().map(unpublished_by_n).unwrap_or_default();
 
     Ok(Sources {
         aircraft,
-        zip_path,
+        zip_path: faa_source,
         companies,
         subsidiaries,
         edgar_hits,
@@ -362,6 +338,32 @@ fn resolve_and_gate(opts: &RefreshOpts, as_of: &str, sources: &Sources) -> Resul
     })
 }
 
+fn load_faa_aircraft(opts: &RefreshOpts) -> Result<(Vec<faa_ingest::Aircraft>, PathBuf, usize)> {
+    if let Some(zip) = &opts.faa_zip {
+        if !zip.exists() {
+            anyhow::bail!("FAA zip not found at {}", zip.display());
+        }
+        let (aircraft, acftref_n) = parse_registry_zip(&std::fs::read(zip)?)?;
+        return Ok((aircraft, zip.clone(), acftref_n));
+    }
+    let db = opts.faa_db.clone().unwrap_or_else(|| {
+        let host = PathBuf::from(DEFAULT_PUBLISHED_DB);
+        if host.exists() {
+            host
+        } else {
+            opts.cache_dir.join("faa-registry.sqlite")
+        }
+    });
+    if !db.exists() {
+        anyhow::bail!(
+            "FAA published sqlite not found at {} (faa-registry-mirror current/). Pass --faa-db or --faa-zip for fixtures. This job does not download ReleasableAircraft.zip.",
+            db.display()
+        );
+    }
+    let (aircraft, acftref_n) = load_current_aircraft(&db)?;
+    Ok((aircraft, db, acftref_n))
+}
+
 fn write_outputs(opts: &RefreshOpts, as_of: &str, out: Gated) -> Result<()> {
     let snap = opts.data_dir.join("snapshots").join(as_of);
 
@@ -439,6 +441,21 @@ fn simple_tickers_dump(rows: &[Company]) -> serde_json::Value {
     })
 }
 
+/// Labeled TPs next to `mappings.yaml`. Harvest dumps (`evidence/*.jsonl`) are never implicit.
+pub(crate) fn resolve_edgar_jsonl(
+    explicit: Option<PathBuf>,
+    overrides_path: &Path,
+) -> Option<PathBuf> {
+    if let Some(p) = explicit {
+        return Some(p);
+    }
+    let allow = overrides_path
+        .parent()
+        .unwrap_or_else(|| Path::new("overrides"))
+        .join("edgar_allowlist.jsonl");
+    allow.exists().then_some(allow)
+}
+
 fn check_master_count(n: usize, skip_floor: bool) -> Result<()> {
     if n == 0 {
         anyhow::bail!("FAA MASTER parsed 0 rows; refusing to refresh");
@@ -461,5 +478,45 @@ mod tests {
         assert!(check_master_count(299_999, false).is_err());
         assert!(check_master_count(MIN_PRODUCTION_MASTER_ROWS, false).is_ok());
         assert!(check_master_count(1, true).is_ok());
+    }
+
+    #[test]
+    fn default_edgar_path_is_allowlist_not_evidence_hits() {
+        let dir = std::env::temp_dir().join(format!(
+            "ttt-edgar-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let evidence = dir.join("evidence");
+        let overrides = dir.join("overrides");
+        std::fs::create_dir_all(&evidence).unwrap();
+        std::fs::create_dir_all(&overrides).unwrap();
+        let evidence_hits = evidence.join("edgar_hits.jsonl");
+        std::fs::write(&evidence_hits, "{\"n_number\":\"N147CJ\"}\n").unwrap();
+        let mappings = overrides.join("mappings.yaml");
+        std::fs::write(&mappings, "").unwrap();
+        let allow = overrides.join("edgar_allowlist.jsonl");
+        std::fs::write(&allow, "").unwrap();
+
+        let got = resolve_edgar_jsonl(None, &mappings).expect("allowlist");
+        assert_eq!(got, allow);
+        assert_ne!(got, evidence_hits);
+
+        let fixture = dir.join("fixture.jsonl");
+        std::fs::write(&fixture, "").unwrap();
+        assert_eq!(
+            resolve_edgar_jsonl(Some(fixture.clone()), &mappings),
+            Some(fixture)
+        );
+
+        std::fs::remove_file(&allow).unwrap();
+        assert!(
+            resolve_edgar_jsonl(None, &mappings).is_none(),
+            "missing allowlist must not fall back to evidence/edgar_hits.jsonl"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

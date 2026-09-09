@@ -50,8 +50,8 @@ When one CIK has many SEC tickers (common + preferreds), the feed emits the **pr
 
 - **Registrant, not owner.** The FAA name on the airframe is the join key. Delaware trusts, LLC SPVs, and lessors are usually not the listed issuer. Do not treat a row as “Walmart’s jet” without reading `registrant_name` and `match_method`.
 - **OEM and aviation issuers are in the table.** Textron/Bell, Boeing, Northrop, Garmin, Bristow, GE Aviation, aircraft lessors match because they *are* the registrant. Filter `aviation_issuer = 0` (and optionally `fleet_size BETWEEN 1 AND 6`) for flight departments.
-- **Low recall.** Hundreds of published rows vs hundreds of thousands of MASTER records. Coverage is unique public identity plus corroborated Exhibit 21, not a census of corporate aviation.
-- **Host feed vs GitHub artifacts.** Production for adsb-trip-journal is the host systemd timer on ct-firehose, which atomically publishes `/var/lib/tail-to-ticker/current/tail_to_ticker.sqlite`. [`.github/workflows/refresh.yml`](.github/workflows/refresh.yml) (cron 07:00 UTC + `workflow_dispatch`) is an **optional artifact backup** (sqlite + changelog retained 14 days). It is not the consumer path and does not replace the host timer. Local `refresh` **re-downloads** FAA, SEC tickers, and PUDL Exhibit 21 unless you pass `--use-cache` or `--skip-download`. Set repo secret / env `SEC_USER_AGENT` to a real contact; placeholder `example.com` is rejected on network fetches.
+- **Low recall.** Hundreds of published rows vs hundreds of thousands of MASTER records. Coverage is unique public identity plus corroborated Exhibit 21, not a census of corporate aviation. Matcher quality is the eval-only [`overrides/rubric.yaml`](overrides/rubric.yaml) holdout (not the mega-cap gold company list). Floors and experiments: [`docs/SCORECARD.md`](docs/SCORECARD.md) (`python3 evidence/scorecard.py`). Do not chase `eval` name recall.
+- **Host feed vs GitHub artifacts.** Production for adsb-trip-journal is the host systemd timer on ct-firehose, which atomically publishes `/var/lib/tail-to-ticker/current/tail_to_ticker.sqlite`. [`.github/workflows/refresh.yml`](.github/workflows/refresh.yml) cannot see the FAA published sqlite; it is not the consumer path. Local `refresh` reads `FAA_REGISTRY_DB` (or `--faa-db` / `--faa-zip` for fixtures) and re-downloads SEC tickers and PUDL Exhibit 21 unless you pass `--use-cache` or `--skip-download`. Set repo secret / env `SEC_USER_AGENT` to a real contact; placeholder `example.com` is rejected on network fetches.
 - **Refresh fail-closed.** Empty/truncated MASTER (production runs require ≥300k parsed rows; `--skip-download` skips that floor), empty Exhibit 21 (unless `--skip-pudl` or an explicit `--ex21` fixture), published-row collapse vs the previous table (below max(50, N/2)), or gold unpublished-tail false positives abort before overwrite.
 - **Precision is a labeled sample, not a score.** After a local refresh, `evidence/export_published_precision_sample.py` and `evidence/write_published_precision_verdicts.py` write a seed-43 sample and verdicts (n=70) under `evidence/`. Those CSVs are gitignored; they are not part of the repo. SQLite does not store a `confidence` column.
 - **Not investment advice.** Code is MIT; FAA data is public domain; PUDL Exhibit 21 is CC-BY-4.0 (cite Catalyst Cooperative). Redistributing a derived feed should keep that citation.
@@ -66,7 +66,7 @@ export SEC_USER_AGENT="Your Name email@domain"
 # local iteration without re-download:
 ./target/release/tail-to-ticker refresh --use-cache
 ./target/release/tail-to-ticker lookup N1WM
-./target/release/tail-to-ticker eval --gold overrides/gold.yaml
+./target/release/tail-to-ticker eval --gold overrides/gold.yaml --rubric overrides/rubric.yaml
 ```
 
 Offline / fixture refresh:
@@ -80,17 +80,24 @@ cargo run -p tail-to-ticker -- refresh \
   --edgar-jsonl tests/fixtures/edgar_hits.jsonl
 ```
 
-FAA zip: `https://registry.faa.gov/database/ReleasableAircraft.zip` (nightly ~05:30 UTC).  
+Production reads `FAA_REGISTRY_DB` (`/var/lib/faa-registry-mirror/current/faa-registry.sqlite`). `--faa-zip` is fixtures only.
+
 SEC tickers: `https://www.sec.gov/files/company_tickers_exchange.json` (requires a descriptive User-Agent).
 
 ## EDGAR harvest (Python sidecar)
 
+SEC requires a declared User-Agent and a max of 10 requests/second. Harvest refuses `example.com` and `--sleep` below 0.1s. Details: [`python/edgar_harvest/README.md`](python/edgar_harvest/README.md).
+
+Refresh loads tracked [`overrides/edgar_allowlist.jsonl`](overrides/edgar_allowlist.jsonl) (8 labeled TPs). It does **not** ingest `evidence/edgar_hits.jsonl`. Harvest writes **raw** JSONL only — never the allowlist.
+
 ```bash
+export SEC_USER_AGENT='tail-to-ticker you@real-domain'
 cd python/edgar_harvest
-python -m edgar_harvest --output ../../evidence/edgar_hits.jsonl
+python -m edgar_harvest.cli
+# default: evidence/edgar_hits_raw.jsonl, start 2018-01-01, live phrases, --sleep 0.5
 ```
 
-Optional `pip install edgartools` for cleaner proxy text. The Rust resolver ignores harvest hits whose N-number is not in MASTER.
+Optional `pip install edgartools` for cleaner proxy text. The Rust resolver ignores harvest hits whose N-number is not in MASTER. Harvest stays off `tail-to-ticker-refresh.timer` because it is a labeled oneshot, not a daily job.
 
 ## Prior art this reuses
 
@@ -110,7 +117,7 @@ cargo build --release
 sudo ./deploy/install.sh
 ```
 
-Refresh is a daily **host** timer at **07:00 UTC** (FAA zip is ~05:30 UTC). That published file is what adsb-trip-journal reads. GitHub Actions `refresh.yml` is an optional artifact backup, not the consumer path. Set `SEC_USER_AGENT` in `/opt/tail-to-ticker/etc/tail-to-ticker.env` (chmod 600) to a real contact; placeholder `example.com` is rejected. The published feed is `/var/lib/tail-to-ticker/current/tail_to_ticker.sqlite` (atomic replace after a successful refresh). Tracking should consume that file, not generate mappings.
+Refresh is a daily **host** timer at **07:00 UTC** (FAA ingest is 05:45 UTC). That published file is what adsb-trip-journal reads. GitHub Actions `refresh.yml` is not the consumer path. Set `SEC_USER_AGENT` in `/opt/tail-to-ticker/etc/tail-to-ticker.env` (chmod 600) to a real contact; placeholder `example.com` is rejected. The published feed is `/var/lib/tail-to-ticker/current/tail_to_ticker.sqlite` (atomic replace after a successful refresh). Tracking should consume that file, not generate mappings.
 
 ## v2 (not this repo’s default path)
 

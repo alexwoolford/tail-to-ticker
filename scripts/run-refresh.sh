@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Oneshot: force-fresh FAA/SEC/PUDL refresh, then atomically publish sqlite.
+# Oneshot: FAA published sqlite + force-fresh SEC/PUDL, then atomically publish sqlite.
 # A failed refresh leaves /var/lib/tail-to-ticker/current/ untouched.
 set -euo pipefail
 

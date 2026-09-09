@@ -72,6 +72,7 @@ install -m 0644 "$ROOT/overrides/mappings.yaml" "$PREFIX/overrides/mappings.yaml
 install -m 0644 "$ROOT/overrides/gold.yaml" "$PREFIX/overrides/gold.yaml"
 install -m 0644 "$ROOT/overrides/aviation_issuers.yaml" "$PREFIX/overrides/aviation_issuers.yaml"
 install -m 0644 "$ROOT/overrides/issuer_aliases.yaml" "$PREFIX/overrides/issuer_aliases.yaml"
+install -m 0644 "$ROOT/overrides/edgar_allowlist.jsonl" "$PREFIX/overrides/edgar_allowlist.jsonl"
 
 if [[ ! -f "$ENV_DST" ]]; then
   if [[ -n "${TAIL_ENV_FILE:-}" && -f "$TAIL_ENV_FILE" ]]; then

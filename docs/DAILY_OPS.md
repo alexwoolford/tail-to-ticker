@@ -18,18 +18,18 @@ Operator logs: `tracing` on stderr → journald (`SyslogIdentifier` matches the 
 
 | UTC | Job |
 |---|---|
-| ~05:30 | FAA Releasable Aircraft zip |
+| 05:45 | `faa-registry-mirror` — publish current MASTER sqlite |
 | 06:00 + ≤15m | `adsb-trip-journal-collect` — yesterday’s `seen_airborne` |
-| **07:00 + ≤15m** | **`tail-to-ticker-refresh`** — force-fresh FAA / SEC / PUDL, atomic publish |
+| **07:00 + ≤15m** | **`tail-to-ticker-refresh`** — FAA published sqlite + fresh SEC / PUDL, atomic publish |
 | every 10 min | `adsb-trip-journal-watch` — re-opens mapping RO |
 
 A tail that appears in the 07:00 map is eligible for watch the same UTC day and for collect the **next** morning. Do not move refresh to 06:00.
 
 ## Deploy (systemd)
 
-**Prefer rsync or git clone + [`deploy/install.sh`](../deploy/install.sh) + systemd.** Same `/opt` + `/var/lib` split as adsb-trip-journal on this host. Build **on the box** (`aarch64-unknown-linux-gnu`); do not copy a Mac binary. Do not run production from `$HOME` with cron. Do not collide with Docker **ct-firehose-filter**. GitHub Actions `refresh.yml` is an optional CI-hosted refresh. It does **not** upload sqlite (this repo is public). The journal reads the host-published file.
+**Prefer rsync or git clone + [`deploy/install.sh`](../deploy/install.sh) + systemd.** Same `/opt` + `/var/lib` split as adsb-trip-journal on this host. Build **on the box** (`aarch64-unknown-linux-gnu`); do not copy a Mac binary. Do not run production from `$HOME` with cron. Do not collide with Docker **ct-firehose-filter**. GitHub Actions `refresh.yml` does not run the feed (no host FAA sqlite). The journal reads the host-published file.
 
-Host prerequisites: outbound HTTPS to `registry.faa.gov`, `www.sec.gov`, and PUDL Exhibit 21; Rust toolchain (or a prebuilt aarch64 binary); `SEC_USER_AGENT` with a real contact (not `example.com`).
+Host prerequisites: outbound HTTPS to `www.sec.gov` and PUDL Exhibit 21; read access to `/var/lib/faa-registry-mirror/current/faa-registry.sqlite`; Rust toolchain (or a prebuilt aarch64 binary); `SEC_USER_AGENT` with a real contact (not `example.com`).
 
 ```bash
 cargo build --release
@@ -46,14 +46,17 @@ Units in [`deploy/systemd/`](../deploy/systemd/):
 
 Config: `/opt/tail-to-ticker/etc/tail-to-ticker.env` (from [`deploy/tail-to-ticker.env.example`](../deploy/tail-to-ticker.env.example), **chmod 600**). Install does not overwrite an existing env file. The timer is enabled only when `SEC_USER_AGENT` is set and does not contain `example.com`.
 
-Default `refresh` **re-downloads** sources. Do not pass `--use-cache` on the timer. Fail-closed gates (MASTER ≥300k, nonempty EX-21, published-row floor, gold unpublished tails) abort before the atomic publish; `/var/lib/tail-to-ticker/current/` stays the previous good file.
+Default `refresh` re-downloads SEC tickers and PUDL. It reads the FAA published sqlite; it does not pass `--use-cache` on the timer. Fail-closed gates (MASTER ≥300k, nonempty EX-21, published-row floor, gold unpublished tails) abort before the atomic publish; `/var/lib/tail-to-ticker/current/` stays the previous good file.
 
 ## FAA zip and User-Agents
 
-- Zip: `https://registry.faa.gov/database/ReleasableAircraft.zip` (~70 MB) — `MASTER.txt` + `ACFTREF.txt`. Nightly ~05:30 UTC. No per-tail API.
-- `FAA_USER_AGENT` (Safari-like default) is for `registry.faa.gov` only; `SEC_USER_AGENT` is the SEC fair-access contact. Do not send the FAA token to SEC.
-- This OCI IP 403s SEC company-tickers JSON; refresh falls back to `cache/company_tickers_exchange.json`. FAA stays fail-closed.
-- **SEC cache age:** `stat /var/lib/tail-to-ticker/cache/company_tickers_exchange.json`. If the file is older than **7 days**, the listed-ticker universe may be stale (new listings missing, tickers renamed). Fetch a fresh `company_tickers_exchange.json` from a network that is not 403’d (laptop, or a one-shot copy into `cache/`) and re-run refresh. Do not treat a successful refresh as “SEC was live” when the log says it used cache.
+## FAA registry (published sqlite)
+
+- **Do not** GET `ReleasableAircraft.zip` from this job. `faa-registry-mirror` ingests at 05:45 UTC and publishes `/var/lib/faa-registry-mirror/current/faa-registry.sqlite` (mode 644).
+- Set `FAA_REGISTRY_DB` to that path (see env.example). `--faa-zip` is fixtures only (CSV parse; commas inside names).
+- `SEC_USER_AGENT` is the SEC fair-access contact. Do not send an FAA Safari token to SEC.
+- SEC requires a declared User-Agent in the SEC sample shape (`tail-to-ticker you@domain`, not the github-paren form) and a maximum of **10 requests/second** per IP. That ceiling is not a target. Harvest details: [`python/edgar_harvest/README.md`](../python/edgar_harvest/README.md) and [`scripts/edgar-fair-access-check.sh`](../scripts/edgar-fair-access-check.sh). Harvest stays off this timer because it is a **labeled oneshot** (tracked [`overrides/edgar_allowlist.jsonl`](../overrides/edgar_allowlist.jsonl)), not because egress is blocked. Do not add it as a daily job.
+- **SEC cache age:** `stat /var/lib/tail-to-ticker/cache/company_tickers_exchange.json`. After 2026-09-08 the sample-shaped UA **200s from this OCI IP**; a github-paren UA 403s as undeclared (`AkamaiGHost`). Do not treat a successful refresh as “SEC was live” when the log says it used cache.
 - Do not set `HTTPS_PROXY` on the tails unit (IPRoyal CONNECT-403s `.gov`). Never put a proxy on adsb-trip-journal.
 
 See [`deploy/tail-to-ticker.env.example`](../deploy/tail-to-ticker.env.example).
@@ -66,11 +69,12 @@ See [`deploy/tail-to-ticker.env.example`](../deploy/tail-to-ticker.env.example).
   scripts/run-refresh.sh
   docs/DAILY_OPS.md
   overrides/{mappings,gold,aviation_issuers,issuer_aliases}.yaml
+  overrides/edgar_allowlist.jsonl
   etc/tail-to-ticker.env
 /var/lib/tail-to-ticker/
   work/current/                 # in-place sqlite while the job runs
   work/snapshots/YYYY-MM-DD/
-  cache/                        # FAA zip, SEC tickers, PUDL parquet
+  cache/                        # SEC tickers, PUDL parquet
   current/tail_to_ticker.sqlite # PUBLISHED — journal reads this (mode 644)
 ```
 

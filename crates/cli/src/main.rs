@@ -3,8 +3,10 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use chrono::Utc;
 use clap::{Parser, Subcommand};
-use faa_ingest::{parse_registry_zip, FAA_DOWNLOAD_USER_AGENT};
-use resolve::{evaluate_gold, is_utc_date, load_gold, lookup, open_db};
+use faa_ingest::{load_current_aircraft, parse_registry_zip, DEFAULT_PUBLISHED_DB};
+use resolve::{
+    evaluate_gold, evaluate_rubric, is_utc_date, load_gold, load_rubric, lookup, open_db,
+};
 
 mod refresh;
 
@@ -32,12 +34,9 @@ struct Cli {
         long,
         global = true,
         env = "SEC_USER_AGENT",
-        default_value = "tail-to-ticker/0.1 (https://github.com/alexwoolford/tail-to-ticker; contact@example.com)"
+        default_value = "tail-to-ticker contact@example.com"
     )]
     user_agent: String,
-    /// User-Agent for `registry.faa.gov` only. Akamai 403s the SEC contact string.
-    #[arg(long, global = true, env = "FAA_USER_AGENT")]
-    faa_user_agent: Option<String>,
     #[command(subcommand)]
     command: Commands,
 }
@@ -50,19 +49,24 @@ enum Commands {
         as_of: Option<String>,
         #[arg(long)]
         faa_zip: Option<PathBuf>,
+        /// Published faa-registry-mirror sqlite. Default: FAA_REGISTRY_DB or host current/.
+        #[arg(long, env = "FAA_REGISTRY_DB")]
+        faa_db: Option<PathBuf>,
         #[arg(long)]
         tickers_json: Option<PathBuf>,
         #[arg(long)]
         ex21: Option<PathBuf>,
         #[arg(long)]
         addresses_json: Option<PathBuf>,
+        /// Explicit EDGAR JSONL. Default is `edgar_allowlist.jsonl` next to `--overrides`.
+        /// Does not load `evidence/edgar_hits.jsonl`.
         #[arg(long)]
         edgar_jsonl: Option<PathBuf>,
         #[arg(long, default_value = "overrides/mappings.yaml")]
         overrides: PathBuf,
         #[arg(long)]
         skip_download: bool,
-        /// Reuse cache/FAA zip / tickers / EX-21 if present (no freshness).
+        /// Reuse cached SEC tickers / EX-21 if present (no freshness).
         #[arg(long)]
         use_cache: bool,
         #[arg(long)]
@@ -90,12 +94,17 @@ enum Commands {
         #[arg(long)]
         db: Option<PathBuf>,
     },
-    /// Precision/recall against overrides/gold.yaml.
+    /// Precision/recall against overrides/gold.yaml (production gate) and
+    /// optional eval-only rubric holdout by stratum.
     Eval {
         #[arg(long, default_value = "overrides/gold.yaml")]
         gold: PathBuf,
+        #[arg(long, default_value = "overrides/rubric.yaml")]
+        rubric: PathBuf,
         #[arg(long)]
         faa_zip: Option<PathBuf>,
+        #[arg(long, env = "FAA_REGISTRY_DB")]
+        faa_db: Option<PathBuf>,
         #[arg(long)]
         db: Option<PathBuf>,
     },
@@ -114,6 +123,7 @@ async fn main() -> Result<()> {
         Commands::Refresh {
             as_of,
             faa_zip,
+            faa_db,
             tickers_json,
             ex21,
             addresses_json,
@@ -131,15 +141,9 @@ async fn main() -> Result<()> {
                 data_dir: cli.data_dir,
                 cache_dir: cli.cache_dir,
                 user_agent: cli.user_agent,
-                faa_user_agent: cli
-                    .faa_user_agent
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty())
-                    .unwrap_or(FAA_DOWNLOAD_USER_AGENT)
-                    .to_string(),
                 as_of,
                 faa_zip,
+                faa_db,
                 tickers_json,
                 ex21,
                 addresses_json,
@@ -201,26 +205,28 @@ async fn main() -> Result<()> {
                 }
             }
         }
-        Commands::Eval { gold, faa_zip, db } => {
+        Commands::Eval {
+            gold,
+            rubric,
+            faa_zip,
+            faa_db,
+            db,
+        } => {
             let gold = load_gold(&gold).with_context(|| format!("gold file {}", gold.display()))?;
             let db_path =
                 db.unwrap_or_else(|| cli.data_dir.join("current").join("tail_to_ticker.sqlite"));
             let feed = open_db(&db_path)?;
             let published = feed.current_mappings()?;
             let trusts = feed.unresolved_trust_count()?;
-            let aircraft = if let Some(zip) = faa_zip {
-                let bytes = std::fs::read(&zip)?;
-                parse_registry_zip(&bytes)?.0
-            } else {
-                let zip = cli.cache_dir.join("ReleasableAircraft.zip");
-                if zip.exists() {
-                    parse_registry_zip(&std::fs::read(&zip)?)?.0
-                } else {
-                    Vec::new()
-                }
-            };
+            let aircraft = load_eval_aircraft(faa_db, faa_zip, &cli.cache_dir)?;
             let report = evaluate_gold(&gold, &published, &aircraft, trusts as usize);
             print!("{report}");
+            if rubric.exists() {
+                let rubric = load_rubric(&rubric)
+                    .with_context(|| format!("rubric file {}", rubric.display()))?;
+                let rr = evaluate_rubric(&rubric, &published, &aircraft);
+                print!("{rr}");
+            }
             if report.tail_false_positives > 0 {
                 anyhow::bail!(
                     "{} tail false positive(s): published as a forbidden ticker",
@@ -230,4 +236,26 @@ async fn main() -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn load_eval_aircraft(
+    faa_db: Option<PathBuf>,
+    faa_zip: Option<PathBuf>,
+    cache_dir: &std::path::Path,
+) -> Result<Vec<faa_ingest::Aircraft>> {
+    if let Some(zip) = faa_zip {
+        return Ok(parse_registry_zip(&std::fs::read(&zip)?)?.0);
+    }
+    let db = faa_db.unwrap_or_else(|| {
+        let host = PathBuf::from(DEFAULT_PUBLISHED_DB);
+        if host.exists() {
+            host
+        } else {
+            cache_dir.join("faa-registry.sqlite")
+        }
+    });
+    if db.exists() {
+        return Ok(load_current_aircraft(&db)?.0);
+    }
+    Ok(Vec::new())
 }
