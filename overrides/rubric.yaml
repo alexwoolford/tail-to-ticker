@@ -1,0 +1,201 @@
+# Eval-only matching rubric. `refresh` must not read this file.
+#
+# Gold.yaml companies = mega-cap census (on MASTER or not). Gold unpublished_tails
+# = production suppress gate. This file is the matcher rubric: hard strata plus a
+# holdout that is not used to train YAML, aliases, the gate, or matcher tests.
+#
+# Positives (`ticker`): this product should publish that N-number as that ticker
+# (FAA registrant join, not beneficial owner).
+# Negatives (`must_not_ticker`): must not publish as that ticker (review/unmatched is success).
+# `not_our_join`: never scored as FN.
+#
+# `filing` holdout is labeled H3 TPs only (N-number in that CIK's exhibit and
+# MASTER registrant is that issuer / operating sub). Not Wheels Up indentures,
+# not stale N898M/USAF, not Domino's N147CJ (MASTER Carlisle Capital).
+# `vanity` holdout is empty: N40D/N340FL are already in mappings.yaml.
+# `identity_hard` holdout is thin (1 issuer, Chevron USA spacing). Do not treat
+# a Chevron-only fix as identity solved. Need ≥3 holdout issuers before that
+# strategy is testable.
+#
+# Cap: max two tails per ticker in this file.
+
+rows:
+  # --- identity_easy train ---
+  - n_number: N15DP
+    ticker: WMT
+    stratum: identity_easy
+    split: train
+    citation: "FAA MASTER NAME=WALMART INC; listed Walmart Inc."
+  - n_number: N175CT
+    ticker: CAT
+    stratum: identity_easy
+    split: train
+    citation: "FAA MASTER NAME=CATERPILLAR INC; listed Caterpillar Inc."
+  - n_number: N280AF
+    ticker: AFL
+    stratum: identity_easy
+    split: train
+    citation: "FAA MASTER NAME=AFLAC INC; listed Aflac Inc."
+
+  # --- identity_easy holdout (not in matcher tests / yaml / gate) ---
+  - n_number: N3546
+    ticker: NKE
+    stratum: identity_easy
+    split: holdout
+    citation: "FAA MASTER NAME=NIKE INC; listed NIKE, Inc. (N1972 is the train/test twin)"
+  - n_number: N855DG
+    ticker: DG
+    stratum: identity_easy
+    split: holdout
+    citation: "FAA MASTER NAME=DOLLAR GENERAL CORP; listed Dollar General Corp"
+  - n_number: N822SF
+    ticker: GAP
+    stratum: identity_easy
+    split: holdout
+    citation: "FAA MASTER NAME=GAP INC; listed Gap Inc."
+
+  # --- identity_hard train (aliases / tests; not holdout) ---
+  - n_number: N100A
+    ticker: XOM
+    stratum: identity_hard
+    split: train
+    citation: "FAA MASTER NAME=EXXON MOBIL CORP; issuer_aliases.yaml (SEC ticker file CIK mismatch)"
+  - n_number: N289MT
+    ticker: RTX
+    stratum: identity_hard
+    split: train
+    citation: "FAA MASTER NAME=RAYTHEON CO; issuer_aliases.yaml / matchers.rs identity test"
+
+  # --- identity_hard holdout: 1 issuer, thin on purpose ---
+  - n_number: N139FW
+    ticker: CVX
+    stratum: identity_hard
+    split: holdout
+    citation: "FAA MASTER NAME=CHEVRON USA INC; spacing variant of CHEVRON U S A INC already in the feed"
+  - n_number: N209JB
+    ticker: CVX
+    stratum: identity_hard
+    split: holdout
+    citation: "FAA MASTER NAME=CHEVRON USA INC; same identity_hard spacing as N139FW (cap 2)"
+
+  # --- subsidiary_tp train (matcher audit cases) ---
+  - n_number: N793FB
+    ticker: CMG
+    stratum: subsidiary_tp
+    split: train
+    citation: "matchers.rs corroboration_gate_audit_cases; N793WF LEASE LLC Chipotle EX-21"
+  - n_number: N9WM
+    ticker: WMT
+    stratum: subsidiary_tp
+    split: train
+    citation: "matchers.rs; WALMART AVIATION LLC Exhibit 21"
+  - n_number: N1AG
+    ticker: AGCO
+    stratum: subsidiary_tp
+    split: train
+    citation: "matchers.rs; AGCO AVIATION LLC Exhibit 21"
+
+  # --- subsidiary_tp holdout ---
+  - n_number: N6PG
+    ticker: PG
+    stratum: subsidiary_tp
+    split: holdout
+    citation: "FAA MASTER NAME=PROCTER & GAMBLE LEASING LLC; P&G HQ Cincinnati; unique EX-21"
+  - n_number: N792CP
+    ticker: COP
+    stratum: subsidiary_tp
+    split: holdout
+    citation: "FAA MASTER NAME=CONOCOPHILLIPS ALASKA INC; unique EX-21 Alaska operating sub"
+  - n_number: N1927G
+    ticker: AJG
+    stratum: subsidiary_tp
+    split: holdout
+    citation: "FAA MASTER NAME=ARTHUR J GALLAGHER (ILLINOIS) LLC; unique EX-21"
+
+  # --- subsidiary_hold train (also production gate / matcher tests) ---
+  - n_number: N16LJ
+    must_not_ticker: LEA
+    stratum: subsidiary_hold
+    split: train
+    citation: "LEAR HOLDING CORP ≠ Lear Corp; gold unpublished_tails; matchers.rs"
+  - n_number: N327ME
+    must_not_ticker: GCI
+    stratum: subsidiary_hold
+    split: train
+    citation: "REACH CO LLC ≠ Gannett; gold unpublished_tails; matchers.rs"
+
+  # --- subsidiary_hold holdout (not in gate or matcher tests) ---
+  - n_number: N111HR
+    must_not_ticker: H
+    stratum: subsidiary_hold
+    split: holdout
+    citation: "review_queue INVERNESS LLC unique EX-21 of Hyatt; uncorroborated; leave on review"
+  - n_number: N285PH
+    must_not_ticker: GM
+    stratum: subsidiary_hold
+    split: holdout
+    citation: "review_queue GLOBAL SERVICES DETROIT LLC unique EX-21 of GM; uncorroborated"
+  - n_number: N10TV
+    must_not_ticker: VTOL
+    stratum: subsidiary_hold
+    split: holdout
+    citation: "review_queue HELICOPTERS INC generic EX-21; Bristow/Edison collision risk"
+
+  # CAT already has identity_easy train N175CT; second CAT row is this hold.
+  - n_number: N3616
+    must_not_ticker: CAT
+    stratum: subsidiary_hold
+    split: holdout
+    citation: "review_queue CARTER MACHINERY CO INC unique EX-21 of Caterpillar; uncorroborated dealer"
+
+  # --- filing holdout (H3 labeled TPs; disjoint from yaml / gate / matcher tests) ---
+  - n_number: N457MP
+    ticker: MPC
+    stratum: filing
+    split: holdout
+    citation: "MPC 10-K EX-10.44 fleet table; FAA MASTER NAME=TESORO AVIATION CO (Marathon operating sub); https://www.sec.gov/Archives/edgar/data/1510295/000151029525000012/mpc-20241231xex1044.htm"
+  - n_number: N459MP
+    ticker: MPC
+    stratum: filing
+    split: holdout
+    citation: "MPC 10-K EX-10.44 fleet table; FAA MASTER NAME=TESORO AVIATION CO; https://www.sec.gov/Archives/edgar/data/1510295/000151029525000012/mpc-20241231xex1044.htm"
+  - n_number: N909ZM
+    ticker: MC
+    stratum: filing
+    split: holdout
+    citation: "Moelis EX-10.3 time-sharing; FAA MASTER NAME=MOELIS & COMPANY MANAGER LLC; https://www.sec.gov/Archives/edgar/data/1596967/000095017025098436/mc-ex10_3.htm"
+  - n_number: N288DX
+    ticker: DGX
+    stratum: filing
+    split: holdout
+    citation: "Quest Diagnostics EX-10.2 aircraft list; FAA MASTER NAME=QUEST DIAGNOSTICS CLINICAL LABORATORIES INC; https://www.sec.gov/Archives/edgar/data/1022079/000102207919000166/dgx063019ex102.htm"
+  - n_number: N899DX
+    ticker: DGX
+    stratum: filing
+    split: holdout
+    citation: "Quest Diagnostics EX-10.2 aircraft list; FAA MASTER NAME=QUEST DIAGNOSTICS CLINICAL LABORATORIES INC; https://www.sec.gov/Archives/edgar/data/1022079/000102207919000166/dgx063019ex102.htm"
+
+  # --- vanity train (mappings.yaml; holdout empty) ---
+  - n_number: N40D
+    ticker: DOW
+    stratum: vanity
+    split: train
+    citation: "mappings.yaml; WARBLER I LLC vanity SPV"
+  - n_number: N340FL
+    ticker: ARHS
+    stratum: vanity
+    split: train
+    citation: "mappings.yaml; HINES HILL AVIATION LLC"
+
+  # --- namesake holdout (not in unpublished_tails gate) ---
+  - n_number: N584A
+    must_not_ticker: EOG
+    stratum: namesake
+    split: holdout
+    citation: "review_queue ARAMCO ASSOCIATED CO at EOG HQ street; address-cluster FP if published as EOG"
+
+  # --- not_our_join (never scored as FN) ---
+  - n_number: N100BD
+    stratum: not_our_join
+    split: holdout
+    citation: "unresolved_trusts TVPX AIRCRAFT SOLUTIONS INC TRUSTEE; bank trustee is not this join"

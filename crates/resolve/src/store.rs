@@ -238,7 +238,8 @@ impl FeedDb {
 
     /// Flush WAL into the main file so a byte-copy of this path is consistent.
     pub fn wal_checkpoint(&self) -> anyhow::Result<()> {
-        self.conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
+        self.conn
+            .execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
         Ok(())
     }
 

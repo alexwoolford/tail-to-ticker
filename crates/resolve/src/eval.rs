@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use faa_ingest::Aircraft;
 
 use crate::normalize::normalize_name;
-use crate::{GoldFile, Mapping};
+use crate::{GoldFile, Mapping, RubricFile, RubricRow};
 
 #[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct EvalReport {
@@ -175,6 +175,142 @@ impl std::fmt::Display for EvalReport {
     }
 }
 
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct RubricStratum {
+    pub stratum: String,
+    pub n: usize,
+    pub skipped_missing_master: usize,
+    pub true_positives: usize,
+    pub false_negatives: usize,
+    pub false_positives: usize,
+    pub recall: Option<f64>,
+    pub precision: Option<f64>,
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct RubricReport {
+    pub holdout_rows: usize,
+    pub strata: Vec<RubricStratum>,
+}
+
+fn is_holdout_positive(row: &RubricRow) -> bool {
+    row.split == "holdout" && row.stratum != "not_our_join" && !row.ticker.is_empty()
+}
+
+fn is_holdout_negative(row: &RubricRow) -> bool {
+    row.split == "holdout" && row.stratum != "not_our_join" && !row.must_not_ticker.is_empty()
+}
+
+pub fn evaluate_rubric(
+    rubric: &RubricFile,
+    published: &[Mapping],
+    aircraft: &[Aircraft],
+) -> RubricReport {
+    let by_n: HashMap<&str, &Mapping> =
+        published.iter().map(|m| (m.n_number.as_str(), m)).collect();
+    let master: HashSet<&str> = aircraft.iter().map(|a| a.n_number.as_str()).collect();
+
+    let mut order: Vec<String> = Vec::new();
+    let mut buckets: HashMap<String, (usize, usize, usize, usize, usize)> = HashMap::new();
+
+    let mut holdout_rows = 0usize;
+    for row in &rubric.rows {
+        if row.split != "holdout" {
+            continue;
+        }
+        holdout_rows += 1;
+        if row.stratum == "not_our_join" {
+            continue;
+        }
+        if !buckets.contains_key(&row.stratum) {
+            order.push(row.stratum.clone());
+            buckets.insert(row.stratum.clone(), (0, 0, 0, 0, 0));
+        }
+        let slot = buckets.get_mut(&row.stratum).expect("stratum");
+        slot.0 += 1;
+        if !master.contains(row.n_number.as_str()) {
+            slot.1 += 1;
+            continue;
+        }
+        if is_holdout_positive(row) {
+            match by_n.get(row.n_number.as_str()) {
+                Some(m) if m.ticker == row.ticker => slot.2 += 1,
+                _ => slot.3 += 1,
+            }
+        } else if is_holdout_negative(row) {
+            if let Some(m) = by_n.get(row.n_number.as_str()) {
+                if m.ticker == row.must_not_ticker {
+                    slot.4 += 1;
+                }
+            }
+        }
+    }
+
+    let mut strata = Vec::new();
+    for s in order {
+        let (n, skip, tp, fn_, fp) = buckets[&s];
+        let scored_pos = tp + fn_;
+        let recall = if scored_pos == 0 {
+            None
+        } else {
+            Some(tp as f64 / scored_pos as f64)
+        };
+        let prec_den = tp + fp;
+        let precision = if prec_den == 0 {
+            None
+        } else {
+            Some(tp as f64 / prec_den as f64)
+        };
+        strata.push(RubricStratum {
+            stratum: s,
+            n,
+            skipped_missing_master: skip,
+            true_positives: tp,
+            false_negatives: fn_,
+            false_positives: fp,
+            recall,
+            precision,
+        });
+    }
+    RubricReport {
+        holdout_rows,
+        strata,
+    }
+}
+
+impl std::fmt::Display for RubricReport {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "rubric holdout rows: {}", self.holdout_rows)?;
+        if self.strata.is_empty() {
+            writeln!(f, "(no scored holdout strata)")?;
+            return Ok(());
+        }
+        for s in &self.strata {
+            let rec = s
+                .recall
+                .map(|v| format!("{v:.3}"))
+                .unwrap_or_else(|| "n/a".into());
+            let prec = s
+                .precision
+                .map(|v| format!("{v:.3}"))
+                .unwrap_or_else(|| "n/a".into());
+            writeln!(
+                f,
+                "  {:<18} n={}  skip_master={}  tp={}  fn={}  fp={}  recall={}  precision={}",
+                s.stratum,
+                s.n,
+                s.skipped_missing_master,
+                s.true_positives,
+                s.false_negatives,
+                s.false_positives,
+                rec,
+                prec
+            )?;
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -289,5 +425,74 @@ mod tests {
         let r = evaluate_gold(&gold, &[mapping("N327ME", "GCI", "REACH")], &[], 0);
         assert_eq!(r.unpublished_skipped_missing_master, 1);
         assert_eq!(r.tail_false_positives, 0);
+    }
+
+    #[test]
+    fn rubric_holdout_scores_positives_and_negatives() {
+        use crate::RubricRow;
+        let rubric = RubricFile {
+            rows: vec![
+                RubricRow {
+                    n_number: "N3546".into(),
+                    ticker: "NKE".into(),
+                    must_not_ticker: String::new(),
+                    stratum: "identity_easy".into(),
+                    split: "holdout".into(),
+                    citation: "test".into(),
+                },
+                RubricRow {
+                    n_number: "N139FW".into(),
+                    ticker: "CVX".into(),
+                    must_not_ticker: String::new(),
+                    stratum: "identity_hard".into(),
+                    split: "holdout".into(),
+                    citation: "test".into(),
+                },
+                RubricRow {
+                    n_number: "N111HR".into(),
+                    ticker: String::new(),
+                    must_not_ticker: "H".into(),
+                    stratum: "subsidiary_hold".into(),
+                    split: "holdout".into(),
+                    citation: "test".into(),
+                },
+                RubricRow {
+                    n_number: "N100BD".into(),
+                    ticker: String::new(),
+                    must_not_ticker: String::new(),
+                    stratum: "not_our_join".into(),
+                    split: "holdout".into(),
+                    citation: "test".into(),
+                },
+            ],
+        };
+        let published = vec![mapping("N3546", "NKE", "NIKE INC")];
+        let aircraft = [
+            jet("N3546", "NIKE INC"),
+            jet("N139FW", "CHEVRON USA INC"),
+            jet("N111HR", "INVERNESS LLC"),
+            jet("N100BD", "TVPX TRUSTEE"),
+        ];
+        let r = evaluate_rubric(&rubric, &published, &aircraft);
+        assert_eq!(r.holdout_rows, 4);
+        let easy = r
+            .strata
+            .iter()
+            .find(|s| s.stratum == "identity_easy")
+            .unwrap();
+        assert_eq!(easy.true_positives, 1);
+        let hard = r
+            .strata
+            .iter()
+            .find(|s| s.stratum == "identity_hard")
+            .unwrap();
+        assert_eq!(hard.false_negatives, 1);
+        let hold = r
+            .strata
+            .iter()
+            .find(|s| s.stratum == "subsidiary_hold")
+            .unwrap();
+        assert_eq!(hold.false_positives, 0);
+        assert!(r.strata.iter().all(|s| s.stratum != "not_our_join"));
     }
 }

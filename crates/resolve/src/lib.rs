@@ -15,12 +15,13 @@ pub use aviation::{
 
 pub use classify::{classify_registrant, Class};
 pub use dates::{is_utc_date, is_utc_instant, require_utc_date, require_utc_instant, utc_iso};
-pub use eval::{evaluate_gold, EvalReport};
+pub use eval::{evaluate_gold, evaluate_rubric, EvalReport, RubricReport};
 pub use matchers::{resolve_all, ResolveOutput};
 pub use normalize::{name_match_corroborated, normalize_address, normalize_name};
 pub use overrides::{
-    apply_issuer_aliases, load_gold, load_issuer_aliases, load_overrides, unpublished_by_n,
-    GoldCompany, GoldFile, IssuerAlias, OverrideEntry, UnpublishedTail,
+    apply_issuer_aliases, load_gold, load_issuer_aliases, load_overrides, load_rubric,
+    unpublished_by_n, GoldCompany, GoldFile, IssuerAlias, OverrideEntry, RubricFile, RubricRow,
+    UnpublishedTail,
 };
 pub use store::{apply_scd2, lookup, open_db, FeedDb};
 

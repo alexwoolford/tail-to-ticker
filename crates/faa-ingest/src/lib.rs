@@ -1,14 +1,17 @@
-//! Download and parse the FAA Releasable Aircraft Database.
+//! Current FAA registry rows for the matcher.
 //!
-//! The nightly zip is public-domain US government data:
-//! <https://registry.faa.gov/database/ReleasableAircraft.zip>
+//! Production reads faa-registry-mirror published sqlite. `--faa-zip` remains
+//! for fixtures; that path still uses a CSV parse of the dump (do not use it
+//! on the host timer).
 
 mod download;
 mod filter;
+mod from_sqlite;
 mod parse;
 
 pub use download::{download_registry, download_registry_to, FAA_DOWNLOAD_USER_AGENT, FAA_ZIP_URL};
 pub use filter::{corporate_reason, is_corporate_aviation};
+pub use from_sqlite::{load_current_aircraft, DEFAULT_PUBLISHED_DB};
 pub use parse::{parse_acftref, parse_master, parse_registry_zip};
 
 use serde::{Deserialize, Serialize};
