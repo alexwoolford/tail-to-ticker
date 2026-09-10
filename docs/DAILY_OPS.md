@@ -138,7 +138,7 @@ Logical name: `tail-to-ticker`. Watch the **work** sqlite the refresh job writes
 
 Capture set: `mappings_current` (full; exclude derived `fleet_size` / `aviation_issuer`), `refresh_run` (after), `changelog` (after). `review_queue` and `unresolved_trusts` are DELETE+reload and are **not** captured.
 
-Outbox/triggers come from [`capturable-state`](https://github.com/alexwoolford/capturable-state) `v0.1.0`, not a copied `capture.rs`.
+Outbox/triggers come from [`capturable-state`](https://github.com/alexwoolford/capturable-state) `v0.1.1`, not a copied `capture.rs`.
 
 Env (collector is `state-capture` on this host; missing socket is ignored):
 
