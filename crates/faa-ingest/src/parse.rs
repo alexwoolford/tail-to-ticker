@@ -66,10 +66,7 @@ pub fn parse_acftref(text: &str) -> Result<HashMap<String, (String, String)>> {
     Ok(map)
 }
 
-pub fn parse_master(
-    text: &str,
-    refs: &HashMap<String, (String, String)>,
-) -> Result<Vec<Aircraft>> {
+pub fn parse_master(text: &str, refs: &HashMap<String, (String, String)>) -> Result<Vec<Aircraft>> {
     let mut rdr = faa_reader(text);
     let headers = rdr.headers()?.clone();
     let headered = looks_like_master_header(&headers);

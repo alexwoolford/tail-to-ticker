@@ -6,7 +6,7 @@ There is no maintained open tail→ticker table. This repo does not scrape Fligh
 
 The feed does **not** emit a probability. `eval` reports unpublished-tail false positives and tail recall against [`overrides/gold.yaml`](overrides/gold.yaml); those counts are not a calibrated confidence score. `refresh` applies `unpublished_tails` as a suppress gate and refuses to write the feed if any of those N-numbers would still publish as `must_not_ticker`.
 
-This is a **public FAA registrant → listed ticker** join. It is not beneficial-owner, operator, or “whose jet is this” intelligence. Bank trusts (~3k tails) are parked, not pierced.
+This is a **public FAA registrant → listed ticker** join. It is not beneficial-owner, operator, or “whose jet is this” intelligence. Bank trusts (~3k tails) stay in `unresolved_trusts` unless the FCC ULS licensee name unique-matches a listed legal name (`fcc_licensee_exact`). `registrant_name` on those rows is still the FAA trustee.
 
 ## What you get
 
@@ -39,10 +39,11 @@ Join types (highest wins; conflicts are not published):
 | Identity | FAA registrant = listed legal name **or** a unique [`issuer_aliases.yaml`](overrides/issuer_aliases.yaml) / former name | Uniqueness only | `exact_legal_name` |
 | Subsidiary | Unique Exhibit 21 name of that CIK | Corroboration: ticker token, N-number SPV, or shared brand token. Identity-suffix namesakes (REACH / LEAR HOLDING) fail | `ex21_subsidiary` |
 | Address | Unique HQ street | Review only (`--publish-address-cluster` to include) | `address_cluster` |
+| FCC licensee | FAA registrant is a trustee mill **and** the FCC ULS `licensee_name` unique-matches one listed legal name or unique Ex-21 name | Uniqueness (parent/former); Ex-21 still needs corroboration. FCC name itself must not be a trustee | `fcc_licensee_exact` |
 
 Company-by-company review **classifies** a miss (identity alias vs subsidiary corroboration vs cited tail vs not our join). It does not add a yaml tail unless the type is cited tail.
 
-Bank trustees, fractionals (NetJets, Flexjet, …), and Part 121 airline fleets are excluded. Trustee bizjets land in `unresolved_trusts` for a later veil-piercing pass.
+Fractionals (NetJets, Flexjet, …) and Part 121 airline fleets are excluded. Trustee bizjets land in `unresolved_trusts` unless `fcc_licensee_exact` publishes them. This job does not GET `l_aircr.zip`; it reads the fcc-uls-aircraft work sqlite when present.
 
 When one CIK has many SEC tickers (common + preferreds), the feed emits the **primary common share** (unhyphenated, major exchange), not `AUB-PA` / `JPM-PM` / `FCNCP`.
 
@@ -51,7 +52,7 @@ When one CIK has many SEC tickers (common + preferreds), the feed emits the **pr
 - **Registrant, not owner.** The FAA name on the airframe is the join key. Delaware trusts, LLC SPVs, and lessors are usually not the listed issuer. Do not treat a row as “Walmart’s jet” without reading `registrant_name` and `match_method`.
 - **OEM and aviation issuers are in the table.** Textron/Bell, Boeing, Northrop, Garmin, Bristow, GE Aviation, aircraft lessors match because they *are* the registrant. Filter `aviation_issuer = 0` (and optionally `fleet_size BETWEEN 1 AND 6`) for flight departments.
 - **Low recall.** Hundreds of published rows vs hundreds of thousands of MASTER records. Coverage is unique public identity plus corroborated Exhibit 21, not a census of corporate aviation. Matcher quality is the eval-only [`overrides/rubric.yaml`](overrides/rubric.yaml) holdout (not the mega-cap gold company list). Floors and experiments: [`docs/SCORECARD.md`](docs/SCORECARD.md) (`python3 evidence/scorecard.py`). Do not chase `eval` name recall.
-- **Host feed vs GitHub artifacts.** Production for adsb-trip-journal is the host systemd timer on ct-firehose, which atomically publishes `/var/lib/tail-to-ticker/current/tail_to_ticker.sqlite`. [`.github/workflows/refresh.yml`](.github/workflows/refresh.yml) cannot see the FAA published sqlite; it is not the consumer path. Local `refresh` reads `FAA_REGISTRY_DB` (or `--faa-db` / `--faa-zip` for fixtures) and re-downloads SEC tickers and PUDL Exhibit 21 unless you pass `--use-cache` or `--skip-download`. Set repo secret / env `SEC_USER_AGENT` to a real contact; placeholder `example.com` is rejected on network fetches.
+- **Host feed vs GitHub artifacts.** Production for adsb-trip-journal is the host systemd timer on ct-firehose, which atomically publishes `/var/lib/tail-to-ticker/current/tail_to_ticker.sqlite`. [`.github/workflows/refresh.yml`](.github/workflows/refresh.yml) cannot see the FAA published sqlite; it is not the consumer path. Local `refresh` reads `FAA_REGISTRY_DB` (or `--faa-db` / `--faa-zip` for fixtures) and optionally `FCC_ULS_DB` (missing file skips trustee pierce). It re-downloads SEC tickers and PUDL Exhibit 21 unless you pass `--use-cache` or `--skip-download`. Set repo secret / env `SEC_USER_AGENT` to a real contact; placeholder `example.com` is rejected on network fetches.
 - **Refresh fail-closed.** Empty/truncated MASTER (production runs require ≥300k parsed rows; `--skip-download` skips that floor), empty Exhibit 21 (unless `--skip-pudl` or an explicit `--ex21` fixture), published-row collapse vs the previous table (below max(50, N/2)), or gold unpublished-tail false positives abort before overwrite.
 - **Precision is a labeled sample, not a score.** After a local refresh, `evidence/export_published_precision_sample.py` and `evidence/write_published_precision_verdicts.py` write a seed-43 sample and verdicts (n=70) under `evidence/`. Those CSVs are gitignored; they are not part of the repo. SQLite does not store a `confidence` column.
 - **Not investment advice.** Code is MIT; FAA data is public domain; PUDL Exhibit 21 is CC-BY-4.0 (cite Catalyst Cooperative). Redistributing a derived feed should keep that citation.
@@ -80,7 +81,7 @@ cargo run -p tail-to-ticker -- refresh \
   --edgar-jsonl tests/fixtures/edgar_hits.jsonl
 ```
 
-Production reads `FAA_REGISTRY_DB` (`/var/lib/faa-registry-mirror/current/faa-registry.sqlite`). `--faa-zip` is fixtures only.
+Production reads `FAA_REGISTRY_DB` (`/var/lib/faa-registry-mirror/current/faa-registry.sqlite`) and `FCC_ULS_DB` (`/var/lib/fcc-uls-aircraft/fcc-uls-aircraft.sqlite`) when that file exists. `--faa-zip` is fixtures only. This job does not GET `l_aircr.zip`.
 
 SEC tickers: `https://www.sec.gov/files/company_tickers_exchange.json` (requires a descriptive User-Agent).
 

@@ -4,12 +4,13 @@ use faa_ingest::{canonical_n_number, is_corporate_aviation, Aircraft};
 use sec_universe::{Company, Subsidiary};
 
 use crate::classify::{classify_registrant, Class};
+use crate::fcc::FccLicensee;
 use crate::normalize::{
     ex21_indexable, name_match_corroborated, normalize_address, normalize_name,
 };
 use crate::{
     Conflict, EdgarHit, Mapping, OverrideEntry, Unresolved, ADDRESS_CLUSTER, EDGAR_NNUMBER,
-    EX21_SUBSIDIARY, EXACT_LEGAL_NAME, MANUAL_OVERRIDE,
+    EX21_SUBSIDIARY, EXACT_LEGAL_NAME, FCC_LICENSEE_EXACT, MANUAL_OVERRIDE,
 };
 
 pub struct ResolveOutput {
@@ -38,6 +39,34 @@ pub fn resolve_all(
     as_of: &str,
     faa_source: &str,
     publish_address_cluster: bool,
+) -> ResolveOutput {
+    resolve_all_fcc(
+        aircraft,
+        companies,
+        subsidiaries,
+        edgar_hits,
+        overrides,
+        unpublished,
+        as_of,
+        faa_source,
+        publish_address_cluster,
+        &[],
+    )
+}
+
+/// Same as [`resolve_all`], plus FCC ULS licensee names for trustee pierce.
+#[allow(clippy::too_many_arguments)]
+pub fn resolve_all_fcc(
+    aircraft: &[Aircraft],
+    companies: &[Company],
+    subsidiaries: &[Subsidiary],
+    edgar_hits: &[EdgarHit],
+    overrides: &HashMap<String, OverrideEntry>,
+    unpublished: &HashMap<String, String>,
+    as_of: &str,
+    faa_source: &str,
+    publish_address_cluster: bool,
+    fcc_licensees: &[FccLicensee],
 ) -> ResolveOutput {
     let primary = sec_universe::primary_listings(companies);
     let companies = primary.as_slice();
@@ -95,6 +124,14 @@ pub fn resolve_all(
         edgar_by_n.entry(n).or_default().push(h);
     }
 
+    let mut fcc_by_n: HashMap<String, Vec<&FccLicensee>> = HashMap::new();
+    for lic in fcc_licensees {
+        if lic.n_number.is_empty() {
+            continue;
+        }
+        fcc_by_n.entry(lic.n_number.clone()).or_default().push(lic);
+    }
+
     let mut published = Vec::new();
     let mut review_queue = Vec::new();
     let mut unresolved = Vec::new();
@@ -105,17 +142,16 @@ pub fn resolve_all(
         if !is_corporate_aviation(ac) {
             continue;
         }
-        match classify_registrant(&ac.registrant_name, ac.is_individual(), ac.fractional_owner) {
-            Class::Trustee => {
-                unresolved.push(unres(ac, "trustee"));
-                continue;
-            }
+        let class =
+            classify_registrant(&ac.registrant_name, ac.is_individual(), ac.fractional_owner);
+        match class {
             Class::Fractional | Class::FaaFractionalFlag | Class::Airline | Class::Individual => {
                 excluded_count += 1;
                 continue;
             }
-            Class::Eligible => {}
+            Class::Trustee | Class::Eligible => {}
         }
+        let is_trustee = class == Class::Trustee;
 
         if let Some(ov) = overrides.get(&ac.n_number) {
             let company_name = if ov.company_name.is_empty() {
@@ -167,6 +203,22 @@ pub fn resolve_all(
                 }
                 EdgarPick::None => {}
             }
+        }
+
+        if is_trustee {
+            match try_fcc_licensee(
+                ac,
+                fcc_by_n.get(&ac.n_number),
+                &name_index,
+                &sub_index,
+                as_of,
+            ) {
+                FccPick::Published(m) => published.push(m),
+                FccPick::Review(m) => review_queue.push(m),
+                FccPick::Conflict(c) => conflicts.push(c),
+                FccPick::None => unresolved.push(unres(ac, "trustee")),
+            }
+            continue;
         }
 
         let norm = normalize_name(&ac.registrant_name);
@@ -278,6 +330,13 @@ enum Unique {
     Many(Vec<String>),
 }
 
+enum FccPick {
+    None,
+    Published(Mapping),
+    Review(Mapping),
+    Conflict(Conflict),
+}
+
 enum EdgarPick {
     None,
     One {
@@ -300,6 +359,99 @@ fn unique_hits(hits: Option<&Vec<NameHit>>) -> Unique {
         0 => Unique::None,
         1 => Unique::One(hits[0].clone()),
         _ => Unique::Many(tickers),
+    }
+}
+
+fn try_fcc_licensee(
+    ac: &Aircraft,
+    licenses: Option<&Vec<&FccLicensee>>,
+    name_index: &HashMap<String, Vec<NameHit>>,
+    sub_index: &HashMap<String, Vec<NameHit>>,
+    as_of: &str,
+) -> FccPick {
+    let Some(licenses) = licenses else {
+        return FccPick::None;
+    };
+    let usable: Vec<&FccLicensee> = licenses
+        .iter()
+        .copied()
+        .filter(|l| classify_registrant(&l.licensee_name, false, false) != Class::Trustee)
+        .collect();
+    if usable.is_empty() {
+        return FccPick::None;
+    }
+
+    let mut chosen: Option<(NameHit, bool, String)> = None;
+    for lic in &usable {
+        let norm = normalize_name(&lic.licensee_name);
+        if norm.is_empty() {
+            continue;
+        }
+        let (hit, ex21) = match unique_hits(name_index.get(&norm)) {
+            Unique::One(h) => (h, false),
+            Unique::Many(tickers) => {
+                return FccPick::Conflict(Conflict {
+                    n_number: ac.n_number.clone(),
+                    registrant_name: ac.registrant_name.clone(),
+                    tickers,
+                    method: FCC_LICENSEE_EXACT.into(),
+                });
+            }
+            Unique::None => match unique_hits(sub_index.get(&norm)) {
+                Unique::One(h) => (h, true),
+                Unique::Many(tickers) => {
+                    return FccPick::Conflict(Conflict {
+                        n_number: ac.n_number.clone(),
+                        registrant_name: ac.registrant_name.clone(),
+                        tickers,
+                        method: FCC_LICENSEE_EXACT.into(),
+                    });
+                }
+                Unique::None => continue,
+            },
+        };
+        if let Some((prev, _, _)) = &chosen {
+            if prev.ticker != hit.ticker {
+                let mut tickers = vec![prev.ticker.clone(), hit.ticker.clone()];
+                tickers.sort();
+                tickers.dedup();
+                return FccPick::Conflict(Conflict {
+                    n_number: ac.n_number.clone(),
+                    registrant_name: ac.registrant_name.clone(),
+                    tickers,
+                    method: FCC_LICENSEE_EXACT.into(),
+                });
+            }
+        } else {
+            chosen = Some((hit, ex21, lic.uls_id.clone()));
+        }
+    }
+
+    let Some((hit, ex21, uls_id)) = chosen else {
+        return FccPick::None;
+    };
+    let src = format!("fcc-uls-aircraft:{uls_id}");
+    let m = mapping(
+        ac,
+        &hit.ticker,
+        &hit.cik,
+        &hit.company_name,
+        FCC_LICENSEE_EXACT,
+        as_of,
+        &src,
+    );
+    if !ex21 {
+        return FccPick::Published(m);
+    }
+    let lic_name = usable
+        .iter()
+        .find(|l| l.uls_id == uls_id)
+        .map(|l| l.licensee_name.as_str())
+        .unwrap_or("");
+    if name_match_corroborated(&normalize_name(lic_name), &hit.company_name, &hit.ticker) {
+        FccPick::Published(m)
+    } else {
+        FccPick::Review(m)
     }
 }
 
@@ -613,6 +765,147 @@ mod tests {
         );
         assert!(out.published.is_empty());
         assert_eq!(out.unresolved[0].reason, "trustee");
+    }
+
+    fn fcc(n: &str, name: &str, uls: &str) -> crate::FccLicensee {
+        crate::FccLicensee {
+            n_number: n.into(),
+            licensee_name: name.into(),
+            uls_id: uls.into(),
+        }
+    }
+
+    #[test]
+    fn fcc_licensee_exact_publishes_trustee() {
+        let licenses = [fcc("N425MP", "Marathon Petroleum Corporation", "uls-mpc")];
+        let mpc = company("MPC", "Marathon Petroleum Corp", "0001510295");
+        let out = resolve_all_fcc(
+            &[jet("N425MP", "BANK OF UTAH TRUSTEE")],
+            &[mpc],
+            &[],
+            &[],
+            &HashMap::new(),
+            &HashMap::new(),
+            "2026-09-21",
+            "faa:test",
+            false,
+            &licenses,
+        );
+        assert_eq!(out.published.len(), 1);
+        assert_eq!(out.published[0].ticker, "MPC");
+        assert_eq!(out.published[0].match_method, FCC_LICENSEE_EXACT);
+        assert_eq!(out.published[0].registrant_name, "BANK OF UTAH TRUSTEE");
+        assert_eq!(out.published[0].source_url, "fcc-uls-aircraft:uls-mpc");
+        assert!(out.unresolved.is_empty());
+    }
+
+    #[test]
+    fn fcc_trustee_on_both_sides_stays_unresolved() {
+        let licenses = [fcc("N50UT", "WELLS FARGO TRUST COMPANY", "uls-wfc")];
+        let out = resolve_all_fcc(
+            &[jet("N50UT", "BANK OF UTAH TRUSTEE")],
+            &[wmt()],
+            &[],
+            &[],
+            &HashMap::new(),
+            &HashMap::new(),
+            "2026-09-21",
+            "faa:test",
+            false,
+            &licenses,
+        );
+        assert!(out.published.is_empty());
+        assert_eq!(out.unresolved[0].reason, "trustee");
+    }
+
+    #[test]
+    fn fcc_ex21_corroborated_publishes() {
+        let licenses = [fcc("N903TF", "Tyson Shared Services, Inc.", "uls-tsn")];
+        let tsn = company("TSN", "Tyson Foods, Inc.", "0000100493");
+        let sub_row = sub(
+            "0000100493",
+            "Tyson Foods, Inc.",
+            "Tyson Shared Services, Inc.",
+        );
+        let out = resolve_all_fcc(
+            &[jet("N903TF", "TVPX AIRCRAFT SOLUTIONS INC TRUSTEE")],
+            &[tsn],
+            &[sub_row],
+            &[],
+            &HashMap::new(),
+            &HashMap::new(),
+            "2026-09-21",
+            "faa:test",
+            false,
+            &licenses,
+        );
+        assert_eq!(out.published.len(), 1);
+        assert_eq!(out.published[0].ticker, "TSN");
+        assert_eq!(out.published[0].match_method, FCC_LICENSEE_EXACT);
+    }
+
+    #[test]
+    fn fcc_uncorroborated_ex21_stays_on_review() {
+        let licenses = [fcc("N327ME", "REACH CO LLC", "uls-gci")];
+        let gci = company("GCI", "Gannett Co., Inc.", "0001579684");
+        let sub_row = sub("0001579684", "Gannett Co., Inc.", "REACH CO LLC");
+        let out = resolve_all_fcc(
+            &[jet("N327ME", "BANK OF UTAH TRUSTEE")],
+            &[gci],
+            &[sub_row],
+            &[],
+            &HashMap::new(),
+            &HashMap::new(),
+            "2026-09-21",
+            "faa:test",
+            false,
+            &licenses,
+        );
+        assert!(out.published.is_empty());
+        assert_eq!(out.review_queue.len(), 1);
+        assert_eq!(out.review_queue[0].match_method, FCC_LICENSEE_EXACT);
+        assert_eq!(out.review_queue[0].ticker, "GCI");
+    }
+
+    #[test]
+    fn fcc_unpublished_gold_goes_to_review() {
+        let licenses = [fcc("N881RC", "Cooper Companies, Inc.", "uls-coo")];
+        let mut unpublished = HashMap::new();
+        unpublished.insert("N881RC".into(), "COO".into());
+        let out = resolve_all_fcc(
+            &[jet("N881RC", "BANK OF UTAH TRUSTEE")],
+            &[company("COO", "Cooper Companies, Inc.", "0000711404")],
+            &[],
+            &[],
+            &HashMap::new(),
+            &unpublished,
+            "2026-09-21",
+            "faa:test",
+            false,
+            &licenses,
+        );
+        assert!(out.published.is_empty());
+        assert_eq!(out.review_queue[0].ticker, "COO");
+        assert_eq!(out.review_queue[0].match_method, FCC_LICENSEE_EXACT);
+    }
+
+    #[test]
+    fn eligible_faa_path_ignores_fcc() {
+        let licenses = [fcc("N1WM", "Some Other Inc", "uls-x")];
+        let out = resolve_all_fcc(
+            &[jet("N1WM", "WALMART INC")],
+            &[wmt()],
+            &[],
+            &[],
+            &HashMap::new(),
+            &HashMap::new(),
+            "2026-08-30",
+            "faa:test",
+            false,
+            &licenses,
+        );
+        assert_eq!(out.published[0].match_method, EXACT_LEGAL_NAME);
+        assert_eq!(out.published[0].ticker, "WMT");
     }
 
     #[test]

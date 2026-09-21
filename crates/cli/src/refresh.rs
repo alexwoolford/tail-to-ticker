@@ -5,9 +5,9 @@ use chrono::Utc;
 use faa_ingest::{load_current_aircraft, parse_registry_zip, DEFAULT_PUBLISHED_DB};
 use resolve::{
     annotate_aviation_issuer, apply_issuer_aliases, apply_scd2, evaluate_gold, is_utc_date,
-    load_aviation_issuers, load_edgar_jsonl, load_gold, load_issuer_aliases, load_overrides,
-    open_db, published_row_floor, resolve_all, unpublished_by_n, AviationIssuers, EdgarHit,
-    GoldFile, Mapping,
+    load_aviation_issuers, load_edgar_jsonl, load_fcc_licensees, load_gold, load_issuer_aliases,
+    load_overrides, open_db, published_row_floor, resolve_all_fcc, unpublished_by_n,
+    AviationIssuers, EdgarHit, FccLicensee, GoldFile, Mapping, DEFAULT_FCC_DB,
 };
 use sec_universe::{
     apply_addresses, download_ex21_parquet, download_tickers, load_addresses_json, load_ex21,
@@ -23,6 +23,7 @@ pub struct RefreshOpts {
     pub as_of: Option<String>,
     pub faa_zip: Option<PathBuf>,
     pub faa_db: Option<PathBuf>,
+    pub fcc_db: Option<PathBuf>,
     pub tickers_json: Option<PathBuf>,
     pub ex21: Option<PathBuf>,
     pub addresses_json: Option<PathBuf>,
@@ -95,6 +96,7 @@ struct Sources {
     companies: Vec<Company>,
     subsidiaries: Vec<Subsidiary>,
     edgar_hits: Vec<EdgarHit>,
+    fcc_licensees: Vec<FccLicensee>,
     overrides: std::collections::HashMap<String, resolve::OverrideEntry>,
     unpublished: std::collections::HashMap<String, String>,
     gold: Option<GoldFile>,
@@ -165,6 +167,9 @@ async fn load_sources(opts: &RefreshOpts, mode: SourceMode) -> Result<Sources> {
         "EDGAR allowlist hits"
     );
 
+    let fcc_licensees = load_fcc_optional(opts.fcc_db.as_deref())?;
+    tracing::info!(fcc_licensees = fcc_licensees.len(), "FCC ULS licensees");
+
     let overrides = if opts.overrides.exists() {
         load_overrides(&opts.overrides)?
     } else {
@@ -185,6 +190,7 @@ async fn load_sources(opts: &RefreshOpts, mode: SourceMode) -> Result<Sources> {
         companies,
         subsidiaries,
         edgar_hits,
+        fcc_licensees,
         overrides,
         unpublished,
         gold,
@@ -266,7 +272,7 @@ struct Gated {
 
 fn resolve_and_gate(opts: &RefreshOpts, as_of: &str, sources: &Sources) -> Result<Gated> {
     let faa_source = format!("faa:{}", sources.zip_path.display());
-    let mut out = resolve_all(
+    let mut out = resolve_all_fcc(
         &sources.aircraft,
         &sources.companies,
         &sources.subsidiaries,
@@ -276,6 +282,7 @@ fn resolve_and_gate(opts: &RefreshOpts, as_of: &str, sources: &Sources) -> Resul
         as_of,
         &faa_source,
         opts.publish_address_cluster,
+        &sources.fcc_licensees,
     );
 
     tracing::info!(
@@ -362,6 +369,39 @@ fn load_faa_aircraft(opts: &RefreshOpts) -> Result<(Vec<faa_ingest::Aircraft>, P
     }
     let (aircraft, acftref_n) = load_current_aircraft(&db)?;
     Ok((aircraft, db, acftref_n))
+}
+
+fn load_fcc_optional(explicit: Option<&Path>) -> Result<Vec<FccLicensee>> {
+    let path = match explicit {
+        Some(p) => p.to_path_buf(),
+        None => {
+            let host = PathBuf::from(DEFAULT_FCC_DB);
+            if host.exists() {
+                host
+            } else {
+                tracing::info!("FCC sqlite not found; trustee licensee pierce skipped");
+                return Ok(Vec::new());
+            }
+        }
+    };
+    if !path.exists() {
+        tracing::info!(
+            path = %path.display(),
+            "FCC sqlite not found; trustee licensee pierce skipped"
+        );
+        return Ok(Vec::new());
+    }
+    match load_fcc_licensees(&path) {
+        Ok(rows) => Ok(rows),
+        Err(e) => {
+            tracing::warn!(
+                path = %path.display(),
+                error = %e,
+                "FCC sqlite unreadable; trustee licensee pierce skipped"
+            );
+            Ok(Vec::new())
+        }
+    }
 }
 
 fn write_outputs(opts: &RefreshOpts, as_of: &str, out: Gated) -> Result<()> {

@@ -2,7 +2,7 @@
 
 ## Product
 
-Daily-refreshable **FAA registrant → listed ticker** feed. Not operator, beneficial owner, or “whose jet is this.” Bank trusts stay parked.
+Daily-refreshable **FAA registrant → listed ticker** feed. Not operator, beneficial owner, or “whose jet is this.” Bank trusts stay in `unresolved_trusts` unless FCC `licensee_name` unique-matches a listed name (`fcc_licensee_exact`; `registrant_name` remains the trustee).
 
 The sibling **adsb-trip-journal** reads the published sqlite **read-only** (`icao24` join). This job must not write `trips.sqlite` or import OpenSky / ADS-B keys.
 
@@ -20,7 +20,8 @@ Operator logs: `tracing` on stderr → journald (`SyslogIdentifier` matches the 
 |---|---|
 | 05:45 | `faa-registry-mirror` — publish current MASTER sqlite |
 | 06:00 + ≤15m | `adsb-trip-journal-collect` — yesterday’s `seen_airborne` |
-| **07:00 + ≤15m** | **`tail-to-ticker-refresh`** — FAA published sqlite + fresh SEC / PUDL, atomic publish |
+| **07:00 + ≤15m** | **`tail-to-ticker-refresh`** — FAA published sqlite + last FCC work sqlite + fresh SEC / PUDL, atomic publish |
+| Sun 12:00 + ≤15m | `fcc-uls-aircraft-ingest` — weekly ULS zip into work sqlite (mode 644, readable by `tails`) |
 | every 10 min | `adsb-trip-journal-watch` — re-opens mapping RO |
 
 A tail that appears in the 07:00 map is eligible for watch the same UTC day and for collect the **next** morning. Do not move refresh to 06:00.
@@ -29,7 +30,7 @@ A tail that appears in the 07:00 map is eligible for watch the same UTC day and 
 
 **Prefer rsync or git clone + [`deploy/install.sh`](../deploy/install.sh) + systemd.** Same `/opt` + `/var/lib` split as adsb-trip-journal on this host. Build **on the box** (`aarch64-unknown-linux-gnu`); do not copy a Mac binary. Do not run production from `$HOME` with cron. Do not collide with Docker **ct-firehose-filter**. GitHub Actions `refresh.yml` does not run the feed (no host FAA sqlite). The journal reads the host-published file.
 
-Host prerequisites: outbound HTTPS to `www.sec.gov` and PUDL Exhibit 21; read access to `/var/lib/faa-registry-mirror/current/faa-registry.sqlite`; Rust toolchain (or a prebuilt aarch64 binary); `SEC_USER_AGENT` with a real contact (not `example.com`).
+Host prerequisites: outbound HTTPS to `www.sec.gov` and PUDL Exhibit 21; read access to `/var/lib/faa-registry-mirror/current/faa-registry.sqlite` and `/var/lib/fcc-uls-aircraft/fcc-uls-aircraft.sqlite` (mode 644); Rust toolchain (or a prebuilt aarch64 binary); `SEC_USER_AGENT` with a real contact (not `example.com`).
 
 ```bash
 cargo build --release
@@ -46,7 +47,7 @@ Units in [`deploy/systemd/`](../deploy/systemd/):
 
 Config: `/opt/tail-to-ticker/etc/tail-to-ticker.env` (from [`deploy/tail-to-ticker.env.example`](../deploy/tail-to-ticker.env.example), **chmod 600**). Install does not overwrite an existing env file. The timer is enabled only when `SEC_USER_AGENT` is set and does not contain `example.com`.
 
-Default `refresh` re-downloads SEC tickers and PUDL. It reads the FAA published sqlite; it does not pass `--use-cache` on the timer. Fail-closed gates (MASTER ≥300k, nonempty EX-21, published-row floor, gold unpublished tails) abort before the atomic publish; `/var/lib/tail-to-ticker/current/` stays the previous good file.
+Default `refresh` re-downloads SEC tickers and PUDL. It reads the FAA published sqlite and the FCC work sqlite when present; it does not pass `--use-cache` on the timer. Missing FCC sqlite skips trustee pierce (log `trustee licensee pierce skipped`). Fail-closed gates (MASTER ≥300k, nonempty EX-21, published-row floor, gold unpublished tails) abort before the atomic publish; `/var/lib/tail-to-ticker/current/` stays the previous good file.
 
 ## FAA zip and User-Agents
 
@@ -54,6 +55,7 @@ Default `refresh` re-downloads SEC tickers and PUDL. It reads the FAA published 
 
 - **Do not** GET `ReleasableAircraft.zip` from this job. `faa-registry-mirror` ingests at 05:45 UTC and publishes `/var/lib/faa-registry-mirror/current/faa-registry.sqlite` (mode 644).
 - Set `FAA_REGISTRY_DB` to that path (see env.example). `--faa-zip` is fixtures only (CSV parse; commas inside names).
+- Set `FCC_ULS_DB` to `/var/lib/fcc-uls-aircraft/fcc-uls-aircraft.sqlite`. **Do not** GET `l_aircr.zip` from this job. Sunday FCC ingest is visible to Monday 07:00 refresh; weekday refreshes reuse last week’s licenses. The sqlite must be mode 644 so user `tails` can read it. Refresh opens it **read-only** (no WAL/shm in that directory). An unreadable FCC sqlite skips trustee pierce; it does not fail the feed.
 - `SEC_USER_AGENT` is the SEC fair-access contact. Do not send an FAA Safari token to SEC.
 - SEC requires a declared User-Agent in the SEC sample shape (`tail-to-ticker you@domain`, not the github-paren form) and a maximum of **10 requests/second** per IP. That ceiling is not a target. Harvest details: [`python/edgar_harvest/README.md`](../python/edgar_harvest/README.md) and [`scripts/edgar-fair-access-check.sh`](../scripts/edgar-fair-access-check.sh). Harvest stays off this timer because it is a **labeled oneshot** (tracked [`overrides/edgar_allowlist.jsonl`](../overrides/edgar_allowlist.jsonl)), not because egress is blocked. Do not add it as a daily job.
 - **SEC cache age:** `stat /var/lib/tail-to-ticker/cache/company_tickers_exchange.json`. After 2026-09-08 the sample-shaped UA **200s from this OCI IP**; a github-paren UA 403s as undeclared (`AkamaiGHost`). Do not treat a successful refresh as “SEC was live” when the log says it used cache.

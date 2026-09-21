@@ -2,7 +2,7 @@
 
 This is the experiment log for the FAA-registrant → listed-ticker join. It is not an equity-universe coverage target.
 
-**Source of truth is the printer:** `python3 evidence/scorecard.py`. Floors and coverage below are the last print (local feed `refresh_run` 2026-09-09T03:08:03Z). Do not treat `eval` name recall as a north star (the denominator includes AMZN airliners and DE/HON pistons).
+**Source of truth is the printer:** `python3 evidence/scorecard.py`. Floors and coverage below are the last print (host feed `refresh_run` 2026-09-21T21:41:06Z). Do not treat `eval` name recall as a north star (the denominator includes AMZN airliners and DE/HON pistons).
 
 Scorecard name precision uses the same definition as `eval` (published gold-name hits must match the gold ticker) over this script’s MASTER corp-aviation + eligible-class slice. It can differ slightly from `tail-to-ticker eval` if refresh’s aircraft slice differs. This printer does not shell out to the binary.
 
@@ -36,7 +36,7 @@ Strata: `identity_easy` / `identity_hard` / `subsidiary_tp` / `subsidiary_hold` 
 
 `identity_hard` holdout is **thin** (CVX `CHEVRON USA INC` only). Do not collapse `USA` ≡ `U S A` and call identity solved. `vanity` holdout is empty on purpose. `filing` holdout is labeled H3 TPs only (n=5). That **1.000 at n=5 is not the n≥30 kill test** (kill: precision < 0.95 at n≥30). Do not quote filing holdout as H3 passing.
 
-Re-print holdout numbers with `python3 evidence/scorecard.py` (section `rubric holdout`). Last print (`refresh_run` 2026-09-09T03:08:03Z):
+Re-print holdout numbers with `python3 evidence/scorecard.py` (section `rubric holdout`). Last print (`refresh_run` 2026-09-21T21:41:06Z):
 
 | Stratum | n | recall | precision | Note |
 |---|---|---|---|---|
@@ -52,12 +52,12 @@ Re-print holdout numbers with `python3 evidence/scorecard.py` (section `rubric h
 
 | Metric | Value |
 |---|---|
-| Published | 603 tails / 197 tickers |
-| Method mix | `ex21_subsidiary` 383, `exact_legal_name` 205, `edgar_nnumber` 8, `manual_override` 7 |
-| Review queue | 461 (`ex21_subsidiary` 392, `address_cluster` 68, `exact_legal_name` 1) |
-| Unresolved trusts | 3115 |
-| `aviation_issuer=0` | 366 tails / 185 tickers (flight department / parent) |
-| `aviation_issuer=1` | 237 tails / 12 tickers (listed aviation business) |
+| Published | 659 tails / 225 tickers |
+| Method mix | `ex21_subsidiary` 385, `exact_legal_name` 209, `fcc_licensee_exact` 50, `edgar_nnumber` 8, `manual_override` 7 |
+| Review queue | 549 (`ex21_subsidiary` 389, `fcc_licensee_exact` 90, `address_cluster` 69, `exact_legal_name` 1) |
+| Unresolved trusts | 2981 |
+| `aviation_issuer=0` | 418 tails / 213 tickers (flight department / parent) |
+| `aviation_issuer=1` | 241 tails / 12 tickers (listed aviation business) |
 | Overrides | `issuer_aliases` 2, `mappings.yaml` 7, `edgar_nnumber` 8 |
 
 Do not grow YAML from memory.
@@ -66,8 +66,8 @@ Do not grow YAML from memory.
 
 | Bucket | n | Meaning |
 |---|---|---|
-| published | 22 | Gold company has at least one published tail |
-| `no_master_legal_name` | 22 | Listed name never appears on MASTER |
+| published | 26 | Gold company has at least one published tail |
+| `no_master_legal_name` | 18 | Listed name never appears on MASTER |
 | review_queue | 4 | PEP / HAL / GM / ITW — SPVs, not identity |
 | airframe_filtered | 4 | DE / HON / LMT piston, AMZN 625 airliners |
 | `master_name_not_published` | **0** | Identity harvest is empty at the company grain |
@@ -82,6 +82,7 @@ Do not grow YAML from memory.
 | EDGAR harvest | Matrix 2026-09-08: github-paren UA → 403 AkamaiGHost (Mac + OCI). SEC sample shape `tail-to-ticker email` → **200 nginx** on both. Safari-string curl also 200 (do not adopt). | The 403 was undeclared-looking UA, not IP denylist and not 10/s. Host env rewritten to sample shape. |
 | Identity uniqueness | N100A/N289MT publish as `exact_legal_name`; unpublished-tail FPs still 0 | That rule is done. Do not wrap identity in corroboration again. |
 | H1 identity-alias harvest | 1 issuer (`CHEVRON USA INC` / 13 tails), below 3 issuers | **Killed.** Do not add YAML. Do not collapse `USA` ≡ `U S A`. |
+| Fuzzy FCC licensee × listed tokens | `AMERICA` / `BUSINESS` / `DOLLAR` on ~1200 Utah FCC names | **Killed.** Unique `normalize_name` only (`fcc_licensee_exact`). |
 
 ## Experiments (closed / blocked)
 
@@ -107,6 +108,12 @@ Host sample (`--query '"FAA Registration Number"' --start 2018-01-01 --max-hits 
 
 Phrase-set finish (both queries, all forms, `--max-hits 250`, 2026-09-09): **filings=155 written=679 unique_n=342 unpublished overlap 0**. Almost all hits are airline 8-Ks / Wheels Up indentures (excluded). Non-airline MASTER names that are the issuer or a clear operating sub: the original five plus six DGX `QUEST DIAGNOSTICS CLINICAL LABORATORIES INC` (three Phenoms published; three PC-12s airframe-filtered). Tracked allowlist [`overrides/edgar_allowlist.jsonl`](../overrides/edgar_allowlist.jsonl) has the **8** publishing TPs. **`edgar_nnumber` 8**; published still **603 / 197**. Dropped the rest (trustees, Hilltop/BX, Carlisle/DPZ, USAF N898M, SPVs). **Phrase set exhausted. Stop auto-publishing.** Later work is quarterly EFTS roll-forward of *new* accessions with the same TP gate, not a 10-K crawl and not the host timer.
 
+### H4 — FCC ULS licensee on trustee FAA — shipped
+
+`match_method=fcc_licensee_exact`. Refresh reads fcc-uls-aircraft **work** sqlite (`FCC_ULS_DB`); it does not GET `l_aircr.zip`. FAA `Class::Trustee` + unique `normalize_name(licensee_name)` vs SEC title/former name publishes; unique Ex-21 still uses the corroboration gate; FCC name that is itself a trustee stays unresolved. Unpublished gold still abort-gates. `registrant_name` stays the FAA trustee.
+
+Warehouse check 2026-09-21 (mosaic `aircraft` + `fcc_licenses` + `issuer`, same needles as `classify.rs`): **8** unique parent-name hits, all unmapped, none on `unpublished_tails`. Host refresh 2026-09-21T21:41:06Z published **50** `fcc_licensee_exact` (parent + corroborated unique Ex-21; unpublished FPs **0**). Skip Wells Fargo Trust Company on the radio side. Do not re-learn fuzzy token join. Printer coverage above includes these rows.
+
 Hand labels (do not dump into YAML):
 
 - **TP (allowlist):** N1895T/N1901G CVX (`CHEVRON U S A INC`); N457MP/N459MP MPC (`TESORO AVIATION CO`); N909ZM MC (`MOELIS & COMPANY MANAGER LLC`); N288DX/N648DX/N899DX DGX (`QUEST DIAGNOSTICS CLINICAL LABORATORIES INC`). PC-12s N120QD/N338QD/N687QD labeled same registrant but airframe-filtered (not in the allowlist).
@@ -130,7 +137,8 @@ Do **not** adopt a fake Safari UA as production identity. Host env stays the sam
 
 - Growing [`overrides/mappings.yaml`](../overrides/mappings.yaml) except cited vanity / one-pun FNs
 - Adding `CHEVRON USA INC` as an issuer alias
-- Publishing trusts or address clusters
+- Publishing address clusters
+- Fuzzy-matching trustee FCC names onto listed `company_name` tokens
 - Loosening EX-21 corroboration (LEAR HOLDING, `HELICOPTERS INC`, CARTER MACHINERY)
 - Widening the airframe filter to pick up DE/HON/AMZN
 - Changing mosaic `warehouse.issuer` into an equity universe — it is `GROUP BY ticker, cik` on published mappings
@@ -140,8 +148,9 @@ Do **not** adopt a fake Safari UA as production identity. Host env stays the sam
 1. **Filing / EFTS N-numbers (H3)** — phrase set exhausted (`edgar_nnumber` 8; **0** new published tails). Not a 10-K crawl and not on the host timer. Kill: holdout `filing` precision below a pre-declared floor (sample n≥30, precision < 0.95) or unpublished-tail FPs > 0. Do not treat filing 1.000 at n=5 as that test.
 2. **Identity_hard normalization** — only if holdout has ≥3 issuers. Chevron-only stays killed.
 3. **EX-21 corroboration (H2)** — killed until a second independent portmanteau.
-4. **Address / trusts / airframe / giant yaml** — not this product.
+4. **Address / airframe / giant yaml** — not this product.
+5. **FCC trustee pierce (H4)** — shipped `fcc_licensee_exact`. Unique licensee vs SEC/Ex-21 only. Re-print this file after the host refresh that has `FCC_ULS_DB`. Do not add a score.
 
 ## Next action
 
-**Phrase set done. Do not change the matcher** to chase 197 issuers. H3 added **0** published tails. The ingest contract is tracked [`overrides/edgar_allowlist.jsonl`](../overrides/edgar_allowlist.jsonl) (8 TPs). Harvest writes raw JSONL only and is not a timer job. Coverage left that this join should not auto-publish: trusts, uncorroborated SPVs, names that never appear on MASTER.
+H4 (`fcc_licensee_exact`) is in the matcher. Host refresh 2026-09-21T21:41:06Z: **50** published trustee tails (Adobe, McDonald’s, CVS, Dollar Tree, Tyson, Marathon, …), unpublished-tail FPs **0**, name precision **1.000**. Mosaic `warehouse.trips` will stay empty on those N-numbers until adsb-trip-journal watches the new `icao24`s (next collect after 07:00 map). Do not fuzzy-match Utah FCC names. H3 phrase set remains exhausted.
