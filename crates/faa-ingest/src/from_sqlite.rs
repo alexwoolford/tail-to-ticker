@@ -9,8 +9,7 @@ use rusqlite::Connection;
 use crate::{canonical_icao24, canonical_n_number, Aircraft, Result};
 
 /// Host publish path from faa-registry-mirror `VACUUM INTO` + `mv`.
-pub const DEFAULT_PUBLISHED_DB: &str =
-    "/var/lib/faa-registry-mirror/current/faa-registry.sqlite";
+pub const DEFAULT_PUBLISHED_DB: &str = "/var/lib/faa-registry-mirror/current/faa-registry.sqlite";
 
 pub fn load_current_aircraft(path: &Path) -> Result<(Vec<Aircraft>, usize)> {
     let conn = Connection::open(path).map_err(|e| {

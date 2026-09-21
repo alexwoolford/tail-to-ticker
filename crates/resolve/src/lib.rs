@@ -4,6 +4,7 @@ mod aviation;
 mod classify;
 mod dates;
 mod eval;
+mod fcc;
 mod matchers;
 mod normalize;
 mod overrides;
@@ -16,7 +17,8 @@ pub use aviation::{
 pub use classify::{classify_registrant, Class};
 pub use dates::{is_utc_date, is_utc_instant, require_utc_date, require_utc_instant, utc_iso};
 pub use eval::{evaluate_gold, evaluate_rubric, EvalReport, RubricReport};
-pub use matchers::{resolve_all, ResolveOutput};
+pub use fcc::{load_fcc_licensees, FccLicensee, DEFAULT_FCC_DB};
+pub use matchers::{resolve_all, resolve_all_fcc, ResolveOutput};
 pub use normalize::{name_match_corroborated, normalize_address, normalize_name};
 pub use overrides::{
     apply_issuer_aliases, load_gold, load_issuer_aliases, load_overrides, load_rubric,
@@ -32,6 +34,7 @@ pub const EDGAR_NNUMBER: &str = "edgar_nnumber";
 pub const EXACT_LEGAL_NAME: &str = "exact_legal_name";
 pub const EX21_SUBSIDIARY: &str = "ex21_subsidiary";
 pub const ADDRESS_CLUSTER: &str = "address_cluster";
+pub const FCC_LICENSEE_EXACT: &str = "fcc_licensee_exact";
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Mapping {

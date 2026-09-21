@@ -52,6 +52,9 @@ enum Commands {
         /// Published faa-registry-mirror sqlite. Default: FAA_REGISTRY_DB or host current/.
         #[arg(long, env = "FAA_REGISTRY_DB")]
         faa_db: Option<PathBuf>,
+        /// FCC ULS work sqlite (licensee_name). Missing file skips trustee pierce.
+        #[arg(long, env = "FCC_ULS_DB")]
+        fcc_db: Option<PathBuf>,
         #[arg(long)]
         tickers_json: Option<PathBuf>,
         #[arg(long)]
@@ -124,6 +127,7 @@ async fn main() -> Result<()> {
             as_of,
             faa_zip,
             faa_db,
+            fcc_db,
             tickers_json,
             ex21,
             addresses_json,
@@ -144,6 +148,7 @@ async fn main() -> Result<()> {
                 as_of,
                 faa_zip,
                 faa_db,
+                fcc_db,
                 tickers_json,
                 ex21,
                 addresses_json,
