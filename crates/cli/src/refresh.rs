@@ -272,6 +272,13 @@ struct Gated {
 
 fn resolve_and_gate(opts: &RefreshOpts, as_of: &str, sources: &Sources) -> Result<Gated> {
     let faa_source = format!("faa:{}", sources.zip_path.display());
+    let omitted = sec_universe::omitted_preferred_only(&sources.companies);
+    let sample: Vec<&str> = omitted.iter().take(8).map(|c| c.ticker.as_str()).collect();
+    tracing::info!(
+        omitted = omitted.len(),
+        sample = %sample.join(","),
+        "preferred-only CIKs omitted from issuer tickers"
+    );
     let mut out = resolve_all_fcc(
         &sources.aircraft,
         &sources.companies,
@@ -436,16 +443,18 @@ fn write_outputs(opts: &RefreshOpts, as_of: &str, out: Gated) -> Result<()> {
             .collect::<Vec<_>>(),
     )?;
 
-    println!(
-        "as_of={as_of} published={} review={} trusts={} conflicts={} changelog={}",
-        out.published.len(),
-        out.review_queue.len(),
-        out.unresolved
+    tracing::info!(
+        as_of,
+        published = out.published.len(),
+        review = out.review_queue.len(),
+        trusts = out
+            .unresolved
             .iter()
             .filter(|u| u.reason == "trustee")
             .count(),
-        out.conflicts.len(),
-        log.len()
+        conflicts = out.conflicts.len(),
+        changelog = log.len(),
+        "refresh published"
     );
     Ok(())
 }
