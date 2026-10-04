@@ -124,8 +124,28 @@ fn value_to_string(v: &Value) -> String {
 ///
 /// SEC `company_tickers_exchange.json` lists every class for a CIK. A HashMap
 /// last-write would publish `AUB-PA` / `JPM-PM` / `FCNCP` instead of `AUB` /
-/// `JPM` / `FCNCA`.
+/// `JPM` / `FCNCA`. A CIK whose best row is still a preferred or warrant
+/// (SCE-PG, with no common on that CIK) is omitted. Those tails stay
+/// unpublished unless an issuer alias names a parent common.
 pub fn primary_listings(companies: &[Company]) -> Vec<Company> {
+    best_per_cik(companies)
+        .into_values()
+        .filter(|c| !preferred_or_warrant(&c.ticker))
+        .collect()
+}
+
+/// Best row per CIK when that row is still a preferred or warrant.
+/// [`primary_listings`] omits these. Refresh logs the count; they are not captured.
+pub fn omitted_preferred_only(companies: &[Company]) -> Vec<Company> {
+    let mut out: Vec<Company> = best_per_cik(companies)
+        .into_values()
+        .filter(|c| preferred_or_warrant(&c.ticker))
+        .collect();
+    out.sort_by(|a, b| a.ticker.cmp(&b.ticker).then(a.cik.cmp(&b.cik)));
+    out
+}
+
+fn best_per_cik(companies: &[Company]) -> HashMap<String, Company> {
     let mut best: HashMap<String, Company> = HashMap::new();
     for c in companies {
         match best.get(&c.cik) {
@@ -135,7 +155,11 @@ pub fn primary_listings(companies: &[Company]) -> Vec<Company> {
             }
         }
     }
-    best.into_values().collect()
+    best
+}
+
+fn preferred_or_warrant(ticker: &str) -> bool {
+    structured_preferred_or_warrant(ticker) || series_suffix_unhyphenated(ticker)
 }
 
 fn major_exchange(exchange: &str) -> bool {
@@ -250,5 +274,30 @@ mod tests {
                 ("0000883948".into(), "AUB".into()),
             ]
         );
+    }
+
+    #[test]
+    fn primary_listings_omits_preferred_only_cik() {
+        let rows = primary_listings(&[
+            co("92103", "SCE-PG", "NYSE"),
+            co("92103", "SCE-PH", "NYSE"),
+            co("92122", "SCE-PG", "NYSE"),
+            co("92122", "SCE", "NYSE"),
+        ]);
+        let mut by: Vec<_> = rows.into_iter().map(|c| (c.cik, c.ticker)).collect();
+        by.sort();
+        assert_eq!(by, vec![("0000092122".into(), "SCE".into())]);
+    }
+
+    #[test]
+    fn omitted_preferred_only_lists_the_dropped_cik() {
+        let rows = omitted_preferred_only(&[
+            co("92103", "SCE-PG", "NYSE"),
+            co("92103", "SCE-PH", "NYSE"),
+            co("92122", "SCE-PG", "NYSE"),
+            co("92122", "SCE", "NYSE"),
+        ]);
+        let tickers: Vec<_> = rows.iter().map(|c| c.ticker.as_str()).collect();
+        assert_eq!(tickers, vec!["SCE-PG"]);
     }
 }

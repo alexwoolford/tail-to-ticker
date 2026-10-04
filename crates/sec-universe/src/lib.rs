@@ -10,8 +10,8 @@ mod tickers;
 pub use addresses::load_addresses_json;
 pub use ex21::{download_ex21_parquet, load_ex21};
 pub use tickers::{
-    apply_addresses, download_tickers, load_tickers, parse_tickers_json, primary_listings,
-    TICKERS_URL,
+    apply_addresses, download_tickers, load_tickers, omitted_preferred_only, parse_tickers_json,
+    primary_listings, TICKERS_URL,
 };
 
 use serde::{Deserialize, Serialize};

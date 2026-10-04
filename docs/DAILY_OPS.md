@@ -131,7 +131,7 @@ Then `systemctl restart adsb-trip-journal-watch.service`.
 
 ## State capture (prep)
 
-Logical name: `tail-to-ticker`. Watch the **work** sqlite the refresh job writes, not the published `current/` copy (`VACUUM INTO` / `mv` duplicates `_outbox`).
+See [CAPTURE.md](CAPTURE.md). Logical name: `tail-to-ticker`. Watch the **work** sqlite the refresh job writes, not the published `current/` copy (`VACUUM INTO` / `mv` duplicates `_outbox`).
 
 | Path | Role |
 |---|---|

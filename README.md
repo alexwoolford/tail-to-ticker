@@ -2,6 +2,8 @@
 
 A daily-refreshable feed that maps **U.S. N-numbers** to **U.S. listed tickers**, with a match method and a source URL on every row.
 
+Production is a systemd oneshot on Linux (`deploy/install.sh`). Capture contract: [docs/CAPTURE.md](docs/CAPTURE.md). Ops: [docs/DAILY_OPS.md](docs/DAILY_OPS.md).
+
 There is no maintained open tail→ticker table. This repo does not scrape FlightAware or rebuild ADS-B tracking. It joins public FAA registrations to the SEC ticker universe (and optional Exhibit 21 subsidiaries / EDGAR N-number hits).
 
 The feed does **not** emit a probability. `eval` reports unpublished-tail false positives and tail recall against [`overrides/gold.yaml`](overrides/gold.yaml); those counts are not a calibrated confidence score. `refresh` applies `unpublished_tails` as a suppress gate and refuses to write the feed if any of those N-numbers would still publish as `must_not_ticker`.
@@ -45,7 +47,7 @@ Company-by-company review **classifies** a miss (identity alias vs subsidiary co
 
 Fractionals (NetJets, Flexjet, …) and Part 121 airline fleets are excluded. Trustee bizjets land in `unresolved_trusts` unless `fcc_licensee_exact` publishes them. This job does not GET `l_aircr.zip`; it reads the fcc-uls-aircraft work sqlite when present.
 
-When one CIK has many SEC tickers (common + preferreds), the feed emits the **primary common share** (unhyphenated, major exchange), not `AUB-PA` / `JPM-PM` / `FCNCP`.
+When one CIK has many SEC tickers (common + preferreds), the feed emits the **primary common share** (unhyphenated, major exchange), not `AUB-PA` / `JPM-PM` / `FCNCP`. A CIK that lists only preferreds or warrants (SCE-PG, no common on that CIK) is omitted. Those tails stay unpublished unless an issuer alias names a parent common.
 
 ## Known limitations
 
